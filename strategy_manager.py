@@ -9,7 +9,7 @@ class StrategyManager:
     """
     Manages drone scanning strategies loaded from a JSON file.
     """
-    def __init__(self, strategy_file="drone_strategies.json"):
+    def __init__(self, strategy_file="configs/cameras.json"):
         """
         Initialize the strategy manager.
         
@@ -17,7 +17,7 @@ class StrategyManager:
             strategy_file (str): Path to the JSON file containing strategies
         """
         self.strategies = {}
-        self.default_strategy = "1:5 Ratio"  # Default strategy if none specified
+        self.default_strategy = "1080p"  # Default strategy if none specified
         self._load_strategies(strategy_file)
         
     def _load_strategies(self, strategy_file):
@@ -29,26 +29,26 @@ class StrategyManager:
         """
         try:
             with open(strategy_file, 'r') as f:
-                data = json.load(f)
-                self.strategies = data.get("strategies", {})
+                self.strategies = json.load(f)
                 
             if not self.strategies:
-                print(f"Warning: No strategies found in {strategy_file}")
+                print(f"Warning: No camera configurations found in {strategy_file}")
             else:
-                print(f"Loaded {len(self.strategies)} scanning strategies")
+                print(f"Loaded {len(self.strategies)} camera configurations")
                 
             # Ensure default strategy exists
             if self.default_strategy not in self.strategies:
                 if self.strategies:
                     self.default_strategy = list(self.strategies.keys())[0]
-                    print(f"Default strategy not found, using '{self.default_strategy}' instead")
+                    print(f"Default camera configuration not found, using '{self.default_strategy}' instead")
                 else:
                     print("Warning: No strategies available")
                     
         except FileNotFoundError:
-            print(f"Warning: Strategy file {strategy_file} not found")
+            print(f"Warning: Camera configuration file {strategy_file} not found")
         except json.JSONDecodeError:
             print(f"Error: Invalid JSON format in {strategy_file}")
+            self.strategies = {}
             
     def get_strategy(self, strategy_name=None):
         """

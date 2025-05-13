@@ -8,6 +8,7 @@ various parameters such as drone type, seed, strategy, and more.
 import os
 import re
 import json
+import sys
 import subprocess
 import datetime
 import random
@@ -236,21 +237,70 @@ def run_simulation():
             progress_callback(self.current_step, SIMULATION_PROGRESS["total_steps"])
             return stats
         
-        # Apply the monkey patch
-        SimulationEngine.step = step_with_progress
+        # For debugging
+        print(f"Running simulation with pattern={pattern}, strategy={strategy}, seed={seed}, num_drones={num_drones}, steps={steps}")
         
+        # Prepare the command to run run_simulation.py
+        python_executable = sys.executable
+        zarr_path = "pset/36_Particles.zarr"  # Default zarr file path
+        
+        # Build the command based on the pattern
+        command = [python_executable, "run_simulation.py"]
+        
+        # Add pattern-specific arguments
         if pattern == "circular":
-            from main import run_circular_simulation
-            stats, gif_path = run_circular_simulation(OUTPUT_DIR, seed, steps)
-            result = {"success": True, "gif_path": os.path.basename(gif_path)}
+            command.extend(["--pattern", "circular", "--steps", str(steps)])
         elif pattern == "ai":
-            from main import run_ai_simulation
-            stats, gif_path = run_ai_simulation(OUTPUT_DIR, seed, num_drones, steps)
-            result = {"success": True, "gif_path": os.path.basename(gif_path)}
+            command.extend(["--pattern", "ai", "--num-drones", str(num_drones), "--steps", str(steps)])
         else:  # lawnmower
-            from main import run_lawnmower_simulation
-            stats, gif_path = run_lawnmower_simulation(OUTPUT_DIR, strategy, seed, steps)
-            result = {"success": True, "gif_path": os.path.basename(gif_path)}
+            command.extend(["--pattern", "lawnmower", "--steps", str(steps)])
+            if strategy:
+                command.extend(["--strategy", strategy])
+        
+        # Add seed if provided
+        if seed is not None:
+            command.extend(["--seed", str(seed)])
+            
+        # Note: No need to add output directory as it's not supported by main.py
+        # OUTPUT_DIR is already defined globally and used by main.py
+        
+        # Add zarr path
+        command.extend(["--zarr", zarr_path])
+        
+        print(f"Running command: {' '.join(command)}")
+        
+        try:
+            # Run the command
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            
+            # Monitor the process and update progress
+            # This is a simple implementation - in a real app, you'd parse the output for progress info
+            while process.poll() is None:
+                # Update progress (simulated here)
+                SIMULATION_PROGRESS["current_step"] += 1
+                if SIMULATION_PROGRESS["current_step"] > SIMULATION_PROGRESS["total_steps"]:
+                    SIMULATION_PROGRESS["current_step"] = SIMULATION_PROGRESS["total_steps"]
+                time.sleep(0.1)
+            
+            # Get the output
+            stdout, stderr = process.communicate()
+            
+            # Check if successful
+            if process.returncode == 0:
+                # Find the generated GIF file (most recent in OUTPUT_DIR)
+                gif_files = [f for f in os.listdir(OUTPUT_DIR) if f.endswith('.gif')]
+                if gif_files:
+                    # Sort by creation time, newest first
+                    gif_files.sort(key=lambda x: os.path.getctime(os.path.join(OUTPUT_DIR, x)), reverse=True)
+                    gif_path = gif_files[0]
+                    result = {"success": True, "gif_path": gif_path}
+                else:
+                    result = {"success": False, "error": "No simulation output generated"}
+            else:
+                result = {"success": False, "error": stderr}
+                
+        except Exception as e:
+            result = {"success": False, "error": str(e)}
         
         # Restore the original method
         SimulationEngine.step = original_step
@@ -484,7 +534,8 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
             <img src="/static/logo-aws.svg" alt="AWS Logo" class="logo">
         </div>
         <div class="title-container">
-            <h1>Drone Simulation Explorer</h1>
+            <img src="/static/logo-drone.png" alt="Drone Logo" style="height: 60px; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto;">
+            <h1>Drone Explorer</h1>
         </div>
         <div class="logo-container">
             <img src="/static/logo-toc.svg" alt="TOC Logo" class="logo">
@@ -509,7 +560,7 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
                         {seed_html}
                     </select>
                     
-                    <label for="strategy">Strategy:</label>
+                    <label for="strategy">Camera:</label>
                     <select id="strategy">
                         {strategy_html}
                     </select>
