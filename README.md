@@ -66,6 +66,38 @@ Run the simulation with lawnmower pattern drones:
 python main.py lawnmower
 ```
 
+#### Scanning Strategies
+
+The lawnmower pattern supports different scanning strategies that affect how drones move and scan the area. To list all available strategies:
+```
+python main.py --list-strategies
+```
+
+To run the simulation with a specific strategy:
+```
+python main.py lawnmower --strategy "1:5 Ratio"
+```
+or using the short option:
+```
+python main.py lawnmower -s "1:5 Ratio"
+```
+
+If no strategy is specified, a default strategy will be used.
+
+#### Reproducible Simulations
+
+You can specify a random seed to ensure reproducible particle dispersion across multiple runs:
+```
+python main.py lawnmower --seed 12345
+```
+
+This can be combined with strategy selection:
+```
+python main.py lawnmower -s "1:5 Ratio" --seed 12345
+```
+
+If no seed is specified, a random seed will be generated and displayed in the output. The seed is also included in the output GIF filename for reference.
+
 ## Output
 
 The simulation generates an animated GIF in the `output` directory showing:

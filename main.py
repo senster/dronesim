@@ -14,25 +14,29 @@ Simulation Scale and Speeds:
 import os
 import datetime
 import sys
+import argparse
 from ocean_map import OceanMap
 from lawnmower_drone import LawnmowerDrone
 from circular_drone import CircularDrone
 from catching_system import CatchingSystem
 from simulation_engine import SimulationEngine
 from visualization import SimulationVisualizer
+from strategy_manager import StrategyManager
 
-def run_lawnmower_simulation(output_dir):
+def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None):
     """
     Run a simulation using lawnmower pattern drones.
     
     Args:
         output_dir (str): Directory to save output files
+        strategy_name (str, optional): Name of the scanning strategy to use
+        seed (int, optional): Random seed for reproducible particle dispersion
         
     Returns:
         tuple: (final_stats, gif_path)
     """
-    # Create the ocean map
-    ocean = OceanMap(width=100.0, height=100.0, particle_density=0.5)
+    # Create the ocean map with optional seed
+    ocean = OceanMap(width=100.0, height=100.0, particle_density=0.5, seed=seed)
     
     # Create the catching system in the center of the map
     system_lat = 50.0
@@ -47,30 +51,53 @@ def run_lawnmower_simulation(output_dir):
         # Using a small step size (2.0 km) for a denser pattern with more lines
         LawnmowerDrone(lat=system_lat, long=system_long, scan_radius=0.3, 
                        min_lat=0.0, max_lat=100.0, min_long=0.0, max_long=100.0,
-                       step_size=2.0, initial_direction=1, initial_vertical_direction=1),
+                       step_size=2.0, initial_direction=1, initial_vertical_direction=1,
+                       strategy_name=strategy_name),
         
         # Drone 2: Start at system, move west and south
         # Field of view is 300m x 300m (0.3km x 0.3km)
         # Using a small step size (2.0 km) for a denser pattern with more lines
         LawnmowerDrone(lat=system_lat, long=system_long, scan_radius=0.3, 
                        min_lat=0.0, max_lat=100.0, min_long=0.0, max_long=100.0,
-                       step_size=2.0, initial_direction=-1, initial_vertical_direction=-1)
+                       step_size=2.0, initial_direction=-1, initial_vertical_direction=-1,
+                       strategy_name=strategy_name)
     ]
     
-    return run_simulation(ocean, drones, system, output_dir, "lawnmower")
+    # Include strategy name and seed in pattern_name if provided
+    pattern_name = "lawnmower"
+    pattern_params = {}
+    
+    if strategy_name:
+        # Get strategy parameters for filename
+        strategy_manager = StrategyManager()
+        strategy = strategy_manager.get_strategy(strategy_name)
+        if strategy and "H (km)" in strategy and "V (km)" in strategy:
+            pattern_params = {
+                "strategy": strategy_name,
+                "H": strategy["H (km)"],
+                "V": strategy["V (km)"]
+            }
+        else:
+            pattern_params = {"strategy": strategy_name}
+    
+    # Add seed to pattern parameters
+    pattern_params["seed"] = ocean.seed
+            
+    return run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params)
 
-def run_circular_simulation(output_dir):
+def run_circular_simulation(output_dir, seed=None):
     """
     Run a simulation using circular pattern drones.
     
     Args:
         output_dir (str): Directory to save output files
+        seed (int, optional): Random seed for reproducible particle dispersion
         
     Returns:
         tuple: (final_stats, gif_path)
     """
-    # Create the ocean map
-    ocean = OceanMap(width=100.0, height=100.0, particle_density=0.5)
+    # Create the ocean map with optional seed
+    ocean = OceanMap(width=100.0, height=100.0, particle_density=0.5, seed=seed)
     
     # Create the catching system in the center of the map
     system_lat = 50.0
@@ -112,9 +139,11 @@ def run_circular_simulation(output_dir):
                      catching_system=system)
     ]
     
-    return run_simulation(ocean, drones, system, output_dir, "circular")
+    # Add seed to pattern parameters
+    pattern_params = {"seed": ocean.seed}
+    return run_simulation(ocean, drones, system, output_dir, "circular", pattern_params)
 
-def run_simulation(ocean, drones, system, output_dir, pattern_name):
+def run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params={}):
     """
     Run a simulation with the given components.
     
@@ -124,6 +153,7 @@ def run_simulation(ocean, drones, system, output_dir, pattern_name):
         system (CatchingSystem): The catching system
         output_dir (str): Directory to save output files
         pattern_name (str): Name of the drone pattern for the output filename
+        pattern_params (dict): Additional parameters to include in the filename
         
     Returns:
         tuple: (final_stats, gif_path)
@@ -153,7 +183,27 @@ def run_simulation(ocean, drones, system, output_dir, pattern_name):
     
     # Generate timestamp for unique filename
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    gif_filename = f"simulation_{pattern_name}_{timestamp}.gif"
+    
+    # Create a descriptive filename with parameters
+    filename_parts = [f"simulation_{pattern_name}"]
+    
+    # Add strategy parameters if available
+    if pattern_params:
+        if "strategy" in pattern_params:
+            # Clean up strategy name for filename
+            clean_strategy = pattern_params["strategy"].replace(":", "-").replace(" ", "_")
+            filename_parts.append(clean_strategy)
+            
+        if "H" in pattern_params and "V" in pattern_params:
+            filename_parts.append(f"H{pattern_params['H']}_V{pattern_params['V']}")
+            
+        # Always include seed in filename
+        if "seed" in pattern_params:
+            filename_parts.append(f"seed{pattern_params['seed']}")
+    
+    # Add timestamp and extension
+    filename_parts.append(timestamp)
+    gif_filename = "_".join(filename_parts) + ".gif"
     
     # Save the animation
     gif_path = visualizer.save_animation(filename=gif_filename, fps=4)
@@ -168,22 +218,46 @@ def run_simulation(ocean, drones, system, output_dir, pattern_name):
     
     return final_stats, gif_path
 
+def list_strategies():
+    """List all available scanning strategies."""
+    strategy_manager = StrategyManager()
+    strategies = strategy_manager.get_strategy_names()
+    default_strategy = strategy_manager.get_default_strategy_name()
+    
+    print("\nAvailable scanning strategies:")
+    for i, strategy in enumerate(strategies, 1):
+        if strategy == default_strategy:
+            print(f"{i}. {strategy} (default)")
+        else:
+            print(f"{i}. {strategy}")
+
 def main():
     # Create output directory
     output_dir = "output"
     os.makedirs(output_dir, exist_ok=True)
     
-    # Get drone pattern from command line argument if provided
-    if len(sys.argv) > 1 and sys.argv[1].lower() == "circular":
-        pattern = "circular"
-    else:
-        pattern = "lawnmower"
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description="Drone Simulation")
+    parser.add_argument("pattern", nargs="?", choices=["circular", "lawnmower"], default="lawnmower",
+                        help="Drone flight pattern (default: lawnmower)")
+    parser.add_argument("--strategy", "-s", help="Scanning strategy for lawnmower pattern")
+    parser.add_argument("--list-strategies", "-l", action="store_true", help="List available scanning strategies")
+    parser.add_argument("--seed", type=int, help="Random seed for reproducible particle dispersion")
+    
+    args = parser.parse_args()
+    
+    # List strategies if requested
+    if args.list_strategies:
+        list_strategies()
+        return
     
     # Run the appropriate simulation
-    if pattern == "circular":
-        run_circular_simulation(output_dir)
+    if args.pattern == "circular":
+        if args.strategy:
+            print("Note: Strategy selection is only applicable for lawnmower pattern")
+        run_circular_simulation(output_dir, args.seed)
     else:
-        run_lawnmower_simulation(output_dir)
+        run_lawnmower_simulation(output_dir, args.strategy, args.seed)
 
 if __name__ == "__main__":
     main()

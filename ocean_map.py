@@ -7,7 +7,7 @@ class OceanMap(Actor):
     """
     Represents the ocean environment with particle distribution.
     """
-    def __init__(self, width=100.0, height=100.0, particle_density=0.5, num_clusters=8):
+    def __init__(self, width=100.0, height=100.0, particle_density=0.5, num_clusters=8, seed=None):
         """
         Initialize an OceanMap with dimensions and particle distribution.
         
@@ -26,11 +26,16 @@ class OceanMap(Actor):
         self.num_clusters = num_clusters
         self.clusters = []  # Will store (x, y, strength, radius) for each cluster
         
+        # Set random seed for reproducibility if provided
+        self.seed = seed if seed is not None else random.randint(1, 1000000)
+        self.random_state = random.Random(self.seed)
+        print(f"Using ocean particle seed: {self.seed}")
+        
         # Track processed particles (where particles have been removed)
         self.processed_particles = {}  # Will store grid cells where particles have been processed
         
         # Wind parameters for particle drift
-        self.wind_direction = random.uniform(0, 2 * math.pi)  # Random initial wind direction in radians
+        self.wind_direction = self.random_state.uniform(0, 2 * math.pi)  # Random initial wind direction in radians
         self.wind_speed = 0.093  # Wind speed (0.5 knots ≈ 0.093 km per step)
         self.wind_change_rate = 0.05  # How quickly wind direction can change
         
@@ -171,14 +176,14 @@ class OceanMap(Actor):
         self.clusters = []
         for _ in range(self.num_clusters):
             # Random position within the map
-            x = random.uniform(0, self.width)
-            y = random.uniform(0, self.height)
+            x = self.random_state.uniform(0, self.width)
+            y = self.random_state.uniform(0, self.height)
             
             # Random strength (maximum density at center)
-            strength = random.uniform(0.7, 1.0)
+            strength = self.random_state.uniform(0.7, 1.0)
             
             # Smaller radius of influence
-            radius = random.uniform(3.0, 8.0)  # Reduced from 5.0-20.0 to create smaller clusters
+            radius = self.random_state.uniform(3.0, 8.0)  # Reduced from 5.0-20.0 to create smaller clusters
             
             self.clusters.append((x, y, strength, radius))
     
@@ -223,7 +228,7 @@ class OceanMap(Actor):
         # Recalculate densities based on new cluster positions
         # For efficiency, only update a portion of the grid each step
         update_fraction = 0.1  # Update 10% of the grid each step
-        keys_to_update = random.sample(list(self.particle_map.keys()), 
+        keys_to_update = self.random_state.sample(list(self.particle_map.keys()), 
                                    int(len(self.particle_map) * update_fraction))
         
         for key in keys_to_update:
@@ -248,7 +253,7 @@ class OceanMap(Actor):
         Wind direction changes gradually over time, but speed remains constant at 0.5 knots.
         """
         # Gradually change wind direction
-        direction_change = random.uniform(-self.wind_change_rate, self.wind_change_rate)
+        direction_change = self.random_state.uniform(-self.wind_change_rate, self.wind_change_rate)
         self.wind_direction = (self.wind_direction + direction_change) % (2 * math.pi)
         
         # Wind speed remains constant at 0.5 knots (0.093 km per step)
@@ -266,8 +271,8 @@ class OceanMap(Actor):
             wind_y = self.wind_speed * math.sin(self.wind_direction) * 0.8
             
             # Random component (20% of movement)
-            random_angle = random.uniform(0, 2 * math.pi)
-            random_speed = random.uniform(0, 0.1)
+            random_angle = self.random_state.uniform(0, 2 * math.pi)
+            random_speed = self.random_state.uniform(0, 0.1)
             random_x = random_speed * math.cos(random_angle) * 0.2
             random_y = random_speed * math.sin(random_angle) * 0.2
             
@@ -280,11 +285,11 @@ class OceanMap(Actor):
             new_y = new_y % self.height
             
             # Slowly change strength
-            new_strength = strength + random.uniform(-0.02, 0.02)
+            new_strength = strength + self.random_state.uniform(-0.02, 0.02)
             new_strength = max(0.5, min(1.0, new_strength))
             
             # Slowly change radius
-            new_radius = radius + random.uniform(-0.1, 0.1)
+            new_radius = radius + self.random_state.uniform(-0.1, 0.1)
             new_radius = max(2.0, min(10.0, new_radius))  # Keep radius within smaller bounds
             
             # Update cluster
