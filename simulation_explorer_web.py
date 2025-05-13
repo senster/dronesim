@@ -261,8 +261,8 @@ def run_simulation():
         if seed is not None:
             command.extend(["--seed", str(seed)])
             
-        # Add output directory
-        command.extend(["--output", OUTPUT_DIR])
+        # Note: No need to add output directory as it's not supported by main.py
+        # OUTPUT_DIR is already defined globally and used by main.py
         
         # Add zarr path
         command.extend(["--zarr", zarr_path])

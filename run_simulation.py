@@ -20,7 +20,7 @@ def parse_arguments():
     parser.add_argument('--seed', type=int, help='Random seed for reproducible results')
     parser.add_argument('--num-drones', type=int, default=4, help='Number of drones for AI pattern')
     parser.add_argument('--steps', type=int, default=200, help='Number of simulation steps')
-    parser.add_argument('--output', type=str, default='output', help='Output directory for simulation results')
+    # Note: Output directory is defined in main.py and not configurable via command line
     parser.add_argument('--zarr', type=str, default='pset/36_Particles.zarr', help='Path to zarr file with particle data')
     
     return parser.parse_args()
@@ -47,8 +47,7 @@ def main():
         command.extend(["--seed", str(args.seed)])
     if args.steps:
         command.extend(["--steps", str(args.steps)])
-    if args.output:
-        command.extend(["--output", args.output])
+    # Output directory is handled by main.py internally
     if args.zarr:
         command.extend(["--zarr", args.zarr])
     
