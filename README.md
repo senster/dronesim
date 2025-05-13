@@ -106,6 +106,28 @@ The simulation generates an animated GIF in the `output` directory showing:
 - Particle density (heatmap)
 - Areas where particles have been processed (visible as cleared areas in the heatmap)
 
+## Frontend Portal
+
+The project includes a web-based frontend portal for easier interaction with the simulation:
+
+### Features
+- Interactive tree view of project components and strategies
+- Dropdown menus for selecting simulation parameters
+- Advanced settings configuration through a modal dialog
+- Visualization of simulation results and statistics
+
+### Running the Frontend Portal
+```
+python frontend_api.py
+```
+
+Then open your web browser and navigate to:
+```
+http://localhost:8000/index.html
+```
+
+For more details, see the [Frontend README](/frontend/README.md).
+
 ## Project Structure
 
 - `main.py`: Entry point for the simulation
@@ -117,3 +139,5 @@ The simulation generates an animated GIF in the `output` directory showing:
 - `ocean_map.py`: Representation of the ocean environment with particle distribution
 - `simulation_engine.py`: Coordinates all actors and runs the simulation
 - `visualization.py`: Handles visualization and animation of the simulation
+- `frontend_api.py`: API server for the frontend portal
+- `frontend/`: Directory containing the web-based frontend portal

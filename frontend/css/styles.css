@@ -1,0 +1,131 @@
+/* Main Styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f5f5f5;
+}
+
+header {
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
+.card {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+/* Tree View Styles */
+.tree-view {
+    list-style-type: none;
+    padding-left: 0;
+}
+
+.tree-view ul {
+    list-style-type: none;
+    padding-left: 20px;
+    display: none;
+}
+
+.tree-view li {
+    margin: 5px 0;
+    position: relative;
+}
+
+.tree-toggle {
+    cursor: pointer;
+    user-select: none;
+}
+
+.tree-toggle:hover {
+    color: #0d6efd;
+}
+
+.tree-toggle.active + ul {
+    display: block;
+}
+
+.tree-view i {
+    margin-right: 5px;
+    width: 16px;
+    text-align: center;
+}
+
+/* Simulation Display */
+#simulation-display {
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    padding: 10px;
+    min-height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#simulation-gif {
+    max-width: 100%;
+    max-height: 400px;
+}
+
+/* Form Controls */
+.form-label {
+    font-weight: 500;
+}
+
+/* Statistics Panel */
+#simulation-stats {
+    font-size: 0.9rem;
+}
+
+#simulation-stats table {
+    width: 100%;
+}
+
+#simulation-stats th {
+    text-align: left;
+}
+
+#simulation-stats td {
+    padding: 3px 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .col-md-3, .col-md-9 {
+        width: 100%;
+    }
+}
+
+/* Custom toggle switch for tree view */
+.tree-toggle::before {
+    content: "▶";
+    display: inline-block;
+    margin-right: 5px;
+    font-size: 10px;
+    transition: transform 0.2s;
+}
+
+.tree-toggle.active::before {
+    transform: rotate(90deg);
+}
+
+/* Hover effects */
+.btn:hover {
+    transform: translateY(-2px);
+    transition: transform 0.2s;
+}
+
+/* Animation for loading */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-spinner {
+    display: inline-block;
+    width: 2rem;
+    height: 2rem;
+    border: 0.25rem solid rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+    border-top-color: #0d6efd;
+    animation: spin 1s linear infinite;
+}
