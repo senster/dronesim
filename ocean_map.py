@@ -53,7 +53,8 @@ class OceanMap(Actor):
         """
         Get the density of particles in a specified area.
         Takes into account areas where particles have been processed (removed).
-        
+        Optimized for performance.
+
         Args:
             polygon (list): List of (lat, long) points defining the area to check
             
@@ -70,6 +71,7 @@ class OceanMap(Actor):
         grid_y = int(center_long / self.grid_size)
         key = (grid_x, grid_y)
         
+        # Use cached values when possible for better performance
         # Check if this area has been processed (particles removed)
         if key in self.processed_particles:
             # Return the reduced density after processing
@@ -79,40 +81,86 @@ class OceanMap(Actor):
         else:
             # For points outside the grid, calculate density based on distance to clusters
             density = self._calculate_density_at_point(center_lat, center_long)
+            # Cache the result for future lookups
+            self.particle_map[key] = density
             return density
             
+    def _batch_calculate_densities(self, lats, longs):
+        """
+        Calculate particle densities for multiple points at once.
+        Optimized for performance using vectorized operations.
+
+        Args:
+            lats (numpy.ndarray): Array of latitude positions
+            longs (numpy.ndarray): Array of longitude positions
+
+        Returns:
+            numpy.ndarray: Array of density values between 0.0 and 1.0
+        """
+        # Start with base density for all points
+        n_points = len(lats)
+        densities = np.full(n_points, self.base_density)
+
+        if len(self.clusters) == 0:
+            return densities
+
+        # Get cluster data
+        cluster_positions = self.cluster_array[:, :2]  # x, y coordinates
+        strengths = self.cluster_array[:, 2]
+        radii = self.cluster_array[:, 3]
+        radii_squared_2x = 2 * (radii ** 2)
+        radii_3x_squared = (radii * 3) ** 2
+
+        # For each point, calculate contributions from all clusters
+        for i in range(n_points):
+            lat, long = lats[i], longs[i]
+
+            # Calculate distances to all clusters at once
+            dx = lat - cluster_positions[:, 0]
+            dy = long - cluster_positions[:, 1]
+            distances_squared = dx*dx + dy*dy
+
+            # Only consider clusters within 3x radius
+            mask = distances_squared < radii_3x_squared
+
+            # Calculate contributions for relevant clusters
+            if np.any(mask):
+                relevant_distances_squared = distances_squared[mask]
+                relevant_strengths = strengths[mask]
+                relevant_radii_squared = radii_squared_2x[mask]
+
+                # Gaussian falloff from center
+                contributions = relevant_strengths * np.exp(-relevant_distances_squared / relevant_radii_squared)
+                densities[i] += np.sum(contributions)
+
+        # Ensure densities are between 0.0 and 1.0
+        return np.clip(densities, 0.0, 1.0)
+
     def process_particles_at_location(self, lat, long, amount):
         """
         Process (remove) particles at a specific location.
-        Updates the processed_particles map to reflect the reduced density.
         
         Args:
             lat (float): Latitude position
             long (float): Longitude position
             amount (float): Amount of particles to process (0.0 to 1.0)
-            
-        Returns:
-            float: Actual amount of particles processed
         """
-        # Convert to grid coordinates
+        # Get the grid cell for this location
         grid_x = int(lat / self.grid_size)
         grid_y = int(long / self.grid_size)
         key = (grid_x, grid_y)
         
-        # Get current density at this location
+        # Get current density
         if key in self.particle_map:
             current_density = self.particle_map[key]
         else:
             current_density = self._calculate_density_at_point(lat, long)
-        
-        # Check if this area has already been processed
-        if key in self.processed_particles:
-            current_density = self.processed_particles[key]
+            self.particle_map[key] = current_density
         
         # Calculate how much can be processed (can't process more than exists)
         processable = min(amount, current_density)
         
-        # Update the processed particles map with the new reduced density
+        # Reduce density by the processed amount
         new_density = max(0.0, current_density - processable)
         self.processed_particles[key] = new_density
         
@@ -186,10 +234,13 @@ class OceanMap(Actor):
             radius = self.random_state.uniform(3.0, 8.0)  # Reduced from 5.0-20.0 to create smaller clusters
             
             self.clusters.append((x, y, strength, radius))
+# Create a numpy array for optimized calculations
+        self.cluster_array = np.array(self.clusters)
 
     def _calculate_density_at_point(self, x_km, y_km):
         """
         Calculate particle density at a specific point based on distance to clusters.
+Optimized for performance with simplified calculations.
 
         Args:
             x_km (float): X position in kilometers
@@ -199,19 +250,20 @@ class OceanMap(Actor):
             float: Density value between 0.0 and 1.0
         """
         # Start with base density
-        density = self.base_density * 0.3  # Lower base density to make clusters more prominent
+        density = self.base_density
 
-        # Add contribution from each cluster
+        # Simple loop-based calculation - often faster for small numbers of clusters
         for cluster_x, cluster_y, strength, radius in self.clusters:
             # Calculate distance to cluster center
             dx = x_km - cluster_x
             dy = y_km - cluster_y
-            distance = math.sqrt(dx * dx + dy * dy)
-
+            distance_squared =dx * dx + dy * dy
+radius_3x_squared = (radius * 3) ** 2
+            
             # Calculate density contribution using Gaussian distribution
-            if distance < radius * 3:  # Only consider points within 3x radius
-                # Gaussian falloff from center
-                contribution = strength * math.exp(-(distance * distance) / (2 * radius * radius))
+            if distance_squared < radius_3x_squared:  # Only consider points within 3x radius
+                # Gaussian falloff from center - avoid sqrt for performance
+                contribution = strength * math.exp(-distance_squared / (2 * radius * radius))
                 density += contribution
 
         # Ensure density is between 0.0 and 1.0
@@ -221,21 +273,34 @@ class OceanMap(Actor):
         """
         Update the particle distribution map for one time step.
         Clusters slowly drift and evolve over time.
+        Optimized for better performance.
         """
         # Update cluster positions and properties
         self._update_clusters()
         
+        # Update the numpy array for optimized calculations
+        self.cluster_array = np.array(self.clusters)
+
         # Recalculate densities based on new cluster positions
-        # For efficiency, only update a portion of the grid each step
-        update_fraction = 0.1  # Update 10% of the grid each step
-        keys_to_update = self.random_state.sample(list(self.particle_map.keys()), 
-                                   int(len(self.particle_map) * update_fraction))
+        # For efficiency, only update a small portion of the grid each step
+        update_fraction = 0.05  # Update only 5% of the grid each step
         
-        for key in keys_to_update:
-            x, y = key
-            lat = x * self.grid_size
-            long = y * self.grid_size
-            self.particle_map[key] = self._calculate_density_at_point(lat, long)
+        # Use numpy for faster operations
+        if len(self.particle_map) > 0:
+            keys = list(self.particle_map.keys())
+            num_to_update = int(len(keys) * update_fraction)
+
+            if num_to_update > 0:
+                # Sample keys to update - using sample() for Python's random module
+                indices = self.random_state.sample(range(len(keys)), num_to_update)
+                keys_to_update = [keys[i] for i in indices]
+
+                # Update the particle map with calculated densities - direct calculation is faster
+                # than the multiprocessing overhead for small batches
+                for key in keys_to_update:
+                    lat = key[0] * self.grid_size
+                    long = key[1] * self.grid_size
+                    self.particle_map[key] = self._calculate_density_at_point(lat, long)
     
     def step(self):
         """

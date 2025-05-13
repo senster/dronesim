@@ -11,6 +11,7 @@ This project simulates a fleet of drones that fly in various patterns to detect 
 - **Multiple Drone Types**:
   - Circular Drones: Fly in circular patterns in front of the catching system
   - Lawnmower Drones: Follow a back-and-forth pattern to cover a large area
+  - AI Drones: Employ smart dynamic pathing to discover the most particles
 
 - **Smart Catching System**:
   - Navigates toward high-density areas detected by drones
@@ -64,6 +65,11 @@ python main.py circular
 Run the simulation with lawnmower pattern drones:
 ```
 python main.py lawnmower
+```
+
+Run the simulation with AI drones that use smart dynamic pathing:
+```
+python main.py ai
 ```
 
 #### Scanning Strategies
