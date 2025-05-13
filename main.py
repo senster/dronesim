@@ -90,15 +90,15 @@ def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None, steps=20
     return run_simulation(200, ocean, drones, system, output_dir, pattern_name, pattern_params, steps)
 
 
-def run_ai_simulation(steps, output_dir, seed=None, num_drones=4):
+def run_ai_simulation(output_dir, seed=None, num_drones=4, steps=200):
     """
     Run a simulation using AI drones with dynamic path planning.
 
     Args:
-        steps (int): Number of simulation steps
         output_dir (str): Directory to save output files
         seed (int, optional): Random seed for reproducible particle dispersion
         num_drones (int, optional): Number of drones to use in the simulation
+        steps (int): Number of simulation steps
 
     Returns:
         tuple: (final_stats, gif_path)
