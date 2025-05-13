@@ -150,20 +150,13 @@ class SimulationVisualizer:
                     if key in self.ocean_map.particle_map:
                         Z[i, j] = self.ocean_map.particle_map[key]
                     else:
-                        Z[i, j] = self.ocean_map.base_density
+                        Z[i, j] = 0.0  # Default to zero density if not in particle map
         
         # Plot the heatmap with blue (low density) to red (high density) colormap
         im = ax.pcolormesh(X, Y, Z, cmap='coolwarm', alpha=0.7, vmin=0, vmax=1)
         plt.colorbar(im, ax=ax, label="Particle Density")
         
-        # Optionally plot cluster centers for debugging
-        if hasattr(self.ocean_map, 'clusters'):
-            for x, y, strength, radius in self.ocean_map.clusters:
-                # Draw a small circle at each cluster center
-                circle = patches.Circle((y, x), radius=radius/2, 
-                                      fill=False, edgecolor='white', 
-                                      linestyle='--', alpha=0.5)
-                ax.add_patch(circle)
+        # No need to plot clusters as they've been removed from the OceanMap class
         
     def _plot_wind(self, ax):
         """
@@ -172,47 +165,8 @@ class SimulationVisualizer:
         Args:
             ax (matplotlib.axes.Axes): Axes to plot on
         """
-        if hasattr(self.ocean_map, 'wind_direction') and hasattr(self.ocean_map, 'wind_speed'):
-            # Get wind parameters
-            wind_dir = self.ocean_map.wind_direction
-            wind_speed = self.ocean_map.wind_speed
-            
-            # In our simulation (ocean_map.py), the wind direction is in radians where:
-            # - 0 radians points east
-            # - π/2 radians points north
-            # - π radians points west
-            # - 3π/2 radians points south
-            #
-            # This is actually the same convention that matplotlib uses for the arrow function,
-            # so we can use the wind direction directly.
-            
-            # Calculate wind vector components
-            dx = wind_speed * 15 * np.cos(wind_dir)  # Scale for visibility
-            dy = wind_speed * 15 * np.sin(wind_dir)  # Scale for visibility
-            
-            # Plot wind vector in top-right corner
-            wind_pos_x = self.ocean_map.width * 0.85
-            wind_pos_y = self.ocean_map.height * 0.85
-            
-            # Draw arrow for wind direction
-            ax.arrow(wind_pos_x, wind_pos_y, dx, dy, 
-                    head_width=3, head_length=3, 
-                    fc='cyan', ec='white', linewidth=2)
-            
-            # Add text label
-            ax.text(wind_pos_x, wind_pos_y + 5, 
-                   f"Wind: {wind_speed:.1f}", 
-                   color='white', fontweight='bold', 
-                   ha='center', va='bottom',
-                   bbox=dict(facecolor='black', alpha=0.5))
-            
-            # Add a small compass indicator
-            compass_radius = 5
-            compass_circle = patches.Circle((wind_pos_x, wind_pos_y), 
-                                         radius=compass_radius, 
-                                         fill=False, edgecolor='white', 
-                                         alpha=0.5)
-            ax.add_patch(compass_circle)
+        # Wind visualization removed as we're now using zarr files for particle data
+        pass
     
     def _plot_drones(self, ax):
         """

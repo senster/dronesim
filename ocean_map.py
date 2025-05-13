@@ -1,53 +1,50 @@
-import random
-import math
 import numpy as np
+import xarray as xr
+import os
+from datetime import datetime
 from actor import Actor
 
 class OceanMap(Actor):
     """
     Represents the ocean environment with particle distribution.
+    Loads particles from OceanParcels zarr files.
     """
-    def __init__(self, width=100.0, height=100.0, particle_density=0.5, num_clusters=8, seed=None):
+    def __init__(self, width=100.0, height=100.0, zarr_path="pset/0_Particles.zarr"):
         """
-        Initialize an OceanMap with dimensions and particle distribution.
+        Initialize an OceanMap with dimensions and particle distribution from zarr file.
         
         Args:
-            width (float): Width of the map
-            height (float): Height of the map
-            particle_density (float): Base density of particles (0.0 to 1.0)
-            num_clusters (int): Number of high-density clusters to generate
+            width (float): Width of the map in kilometers
+            height (float): Height of the map in kilometers
+            zarr_path (str): Path to OceanParcels zarr file for particle data
         """
         super().__init__(0.0, 0.0)  # Position not relevant for the map
         self.width = width
         self.height = height
-        self.base_density = particle_density
         self.particle_map = {}  # Will store density values for different regions
         self.grid_size = 1  # Higher resolution grid (1x1 units)
-        self.num_clusters = num_clusters
-        self.clusters = []  # Will store (x, y, strength, radius) for each cluster
-        
-        # Set random seed for reproducibility if provided
-        self.seed = seed if seed is not None else random.randint(1, 1000000)
-        self.random_state = random.Random(self.seed)
-        print(f"Using ocean particle seed: {self.seed}")
         
         # Track processed particles (where particles have been removed)
         self.processed_particles = {}  # Will store grid cells where particles have been processed
         
-        # Wind parameters for particle drift
-        self.wind_direction = self.random_state.uniform(0, 2 * math.pi)  # Random initial wind direction in radians
-        self.wind_speed = 0.093  # Wind speed (0.5 knots ≈ 0.093 km per step)
-        self.wind_change_rate = 0.05  # How quickly wind direction can change
+        # Zarr file path for loading particles
+        self.zarr_path = zarr_path
         
-        # Initialize with clustered particle distribution
-        self._initialize_particle_map()
+        # Time-related attributes
+        self.current_time_index = 0
+        self.time_steps = []
+        self.particles_data = None
+        self.seconds_per_step = 300.0  # Default value (5 minutes)
+        
+        # Load particle data from zarr file
+        print(f"Loading particles from zarr file: {self.zarr_path}")
+        self._load_particles_from_zarr()
         
     def step(self):
         """
         Update the particle distribution for one time step.
         """
-        # For now, just slightly randomize the particle distribution
-        self._update_particle_map()
+        self._update_particles_from_zarr()
         
     def get_particles_in_area(self, polygon):
         """
@@ -56,19 +53,19 @@ class OceanMap(Actor):
         Optimized for performance.
         
         Args:
-            polygon (list): List of (lat, long) points defining the area to check
+            polygon (list): List of (x_km, y_km) points defining the area to check
             
         Returns:
             float: Density of particles in the area (0.0 to 1.0)
         """
         # For simplicity, we'll just use the center point of the polygon
         # In a real implementation, this would calculate the actual intersection
-        center_lat = sum(p[0] for p in polygon) / len(polygon)
-        center_long = sum(p[1] for p in polygon) / len(polygon)
+        center_x_km = sum(p[0] for p in polygon) / len(polygon)
+        center_y_km = sum(p[1] for p in polygon) / len(polygon)
         
         # Get the density at this point using the higher resolution grid
-        grid_x = int(center_lat / self.grid_size)
-        grid_y = int(center_long / self.grid_size)
+        grid_x = int(center_x_km / self.grid_size)
+        grid_y = int(center_y_km / self.grid_size)
         key = (grid_x, grid_y)
         
         # Use cached values when possible for better performance
@@ -79,13 +76,10 @@ class OceanMap(Actor):
         elif key in self.particle_map:
             return self.particle_map[key]
         else:
-            # For points outside the grid, calculate density based on distance to clusters
-            density = self._calculate_density_at_point(center_lat, center_long)
-            # Cache the result for future lookups
-            self.particle_map[key] = density
-            return density
+            # For points outside the grid, return zero density
+            return 0.0
             
-    def _batch_calculate_densities(self, lats, longs):
+    def process_particles_at_location(self, x_km, y_km, amount):
         """
         Calculate particle densities for multiple points at once.
         Optimized for performance using vectorized operations.
@@ -136,26 +130,29 @@ class OceanMap(Actor):
         # Ensure densities are between 0.0 and 1.0
         return np.clip(densities, 0.0, 1.0)
             
-    def process_particles_at_location(self, lat, long, amount):
+    def process_particles_at_location(self, x_km, y_km, amount):
         """
         Process (remove) particles at a specific location.
         
         Args:
-            lat (float): Latitude position
-            long (float): Longitude position
+            x_km (float): X position in kilometers
+            y_km (float): Y position in kilometers
             amount (float): Amount of particles to process (0.0 to 1.0)
         """
         # Get the grid cell for this location
-        grid_x = int(lat / self.grid_size)
-        grid_y = int(long / self.grid_size)
+        grid_x = int(x_km / self.grid_size)
+        grid_y = int(y_km / self.grid_size)
         key = (grid_x, grid_y)
         
         # Get current density
         if key in self.particle_map:
             current_density = self.particle_map[key]
         else:
-            current_density = self._calculate_density_at_point(lat, long)
-            self.particle_map[key] = current_density
+            current_density = 0.0
+        
+        # Check if this area has already been processed
+        if key in self.processed_particles:
+            current_density = self.processed_particles[key]
         
         # Calculate how much can be processed (can't process more than exists)
         processable = min(amount, current_density)
@@ -165,117 +162,218 @@ class OceanMap(Actor):
         self.processed_particles[key] = new_density
         
         # Also process neighboring cells with a falloff effect
-        # This creates a more natural "cleaned up" area around the processing point
-        for dx in range(-2, 3):
-            for dy in range(-2, 3):
+        radius = 1  # Process particles in a small radius around the target
+        for dx in range(-radius, radius + 1):
+            for dy in range(-radius, radius + 1):
                 if dx == 0 and dy == 0:
                     continue  # Skip the center cell (already processed)
                 
                 neighbor_key = (grid_x + dx, grid_y + dy)
                 
-                # Calculate distance-based falloff (closer cells are processed more)
-                distance = math.sqrt(dx*dx + dy*dy)
-                falloff = max(0.0, 1.0 - (distance / 3.0))
-                
                 # Get current density at neighbor
                 if neighbor_key in self.particle_map:
                     neighbor_density = self.particle_map[neighbor_key]
                 else:
-                    neighbor_lat = (grid_x + dx) * self.grid_size
-                    neighbor_long = (grid_y + dy) * self.grid_size
-                    neighbor_density = self._calculate_density_at_point(neighbor_lat, neighbor_long)
+                    neighbor_density = 0.0
                 
                 # Check if this neighbor has already been processed
                 if neighbor_key in self.processed_particles:
                     neighbor_density = self.processed_particles[neighbor_key]
                 
-                # Process a portion of the neighbor's density based on falloff
-                neighbor_processable = min(processable * falloff, neighbor_density)
+                # Calculate falloff based on distance
+                distance = np.sqrt(dx*dx + dy*dy)
+                falloff = max(0.0, 1.0 - distance/radius)
+                
+                # Process a portion of the neighbor's particles
+                neighbor_processable = min(amount * falloff * 0.5, neighbor_density)
                 new_neighbor_density = max(0.0, neighbor_density - neighbor_processable)
+                
+                # Update the processed particles map for this neighbor
                 self.processed_particles[neighbor_key] = new_neighbor_density
+                
+                # Add the neighbor's processed amount to the total
+                processable += neighbor_processable
         
         return processable
         
-    def _initialize_particle_map(self):
+    def get_seconds_per_step(self):
         """
-        Initialize the particle distribution map with clustered density patterns.
-        Creates high-density clusters surrounded by gradually decreasing density.
-        """
-        # Generate random cluster centers
-        self._generate_clusters()
+        Get the number of seconds per simulation step.
         
-        # Create the high-resolution grid
-        for x in range(int(self.width / self.grid_size)):
-            for y in range(int(self.height / self.grid_size)):
-                # Calculate actual lat/long position
-                lat = x * self.grid_size
-                long = y * self.grid_size
+        Returns:
+            float: Number of seconds per step
+        """
+        return self.seconds_per_step
+        
+    def _load_particles_from_zarr(self):
+        """
+        Load particle data from OceanParcels zarr file.
+        Converts lat/lon coordinates to x/y in kilometers for our simulation.
+        """
+        try:
+            # Load the zarr dataset
+            ds = xr.open_zarr(self.zarr_path)
+            
+            # Extract time steps
+            self.time_steps = ds.time.values
+            
+            # Store the dataset for later use
+            self.particles_data = ds
+            
+            # Get the lat/lon ranges from the data
+            min_lon = float(np.nanmin(ds.lon.values))
+            max_lon = float(np.nanmax(ds.lon.values))
+            min_lat = float(np.nanmin(ds.lat.values))
+            max_lat = float(np.nanmax(ds.lat.values))
+            
+            # Store conversion parameters
+            self.min_lon = min_lon
+            self.max_lon = max_lon
+            self.min_lat = min_lat
+            self.max_lat = max_lat
+            
+            # Calculate time step in seconds
+            try:
+                if len(self.time_steps) > 1 and len(self.time_steps[0]) > 1:
+                    # Get the first two valid timestamps for the first trajectory
+                    valid_times = []
+                    for i in range(len(self.time_steps[0])):
+                        if not np.isnat(self.time_steps[0, i]):
+                            valid_times.append(self.time_steps[0, i])
+                        if len(valid_times) >= 2:
+                            break
+                    
+                    if len(valid_times) >= 2:
+                        # Calculate time difference in seconds
+                        time_diff = (valid_times[1] - valid_times[0]).astype('timedelta64[s]').astype(np.float64)
+                        if time_diff > 0:
+                            self.seconds_per_step = time_diff
+                            print(f"Zarr time step: {self.seconds_per_step} seconds")
+                        else:
+                            # Default to 5 minutes if calculation gives negative or zero
+                            self.seconds_per_step = 300.0
+                            print("Invalid time step detected, using default: 300 seconds (5 minutes)")
+                    else:
+                        # Default to 5 minutes if not enough valid timestamps
+                        self.seconds_per_step = 300.0
+                        print("Not enough valid timestamps, using default: 300 seconds (5 minutes)")
+                else:
+                    # Default to 5 minutes if not enough data
+                    self.seconds_per_step = 300.0
+                    print("Not enough time data, using default: 300 seconds (5 minutes)")
+            except Exception as e:
+                # Default to 5 minutes if there's an error
+                self.seconds_per_step = 300.0
+                print(f"Error calculating time step: {e}")
+                print("Using default time step: 300 seconds (5 minutes)")
+            
+            # Initialize the particle map based on the first time step
+            self._update_particles_from_zarr()
+            
+            print(f"Successfully loaded particles from {self.zarr_path}")
+            print(f"Lat range: {min_lat} to {max_lat}, Lon range: {min_lon} to {max_lon}")
+            print(f"Time steps: {len(self.time_steps[0])}")
+            
+        except Exception as e:
+            print(f"Error loading zarr file: {e}")
+            raise e  # Re-raise the exception since we don't have a fallback
+    
+    def _update_particles_from_zarr(self):
+        """
+        Update the particle distribution based on the current time step in the zarr file.
+        """
+        if self.particles_data is None:
+            return
+        
+        # Clear the current particle map
+        self.particle_map = {}
+        
+        # Get the current time step data
+        time_index = min(self.current_time_index, len(self.time_steps[0]) - 1)
+        
+        # Extract lat/lon for all particles at this time step
+        lats = self.particles_data.lat.values[:, time_index]
+        lons = self.particles_data.lon.values[:, time_index]
+        
+        # Count particles in each grid cell
+        grid_counts = {}
+        total_particles = 0
+        
+        # Process each particle
+        for i in range(len(lats)):
+            if np.isnan(lats[i]) or np.isnan(lons[i]):
+                continue
                 
-                # Calculate density based on distance to cluster centers
-                density = self._calculate_density_at_point(lat, long)
-                self.particle_map[(x, y)] = density
-    
-    def _generate_clusters(self):
-        """
-        Generate random clusters of high particle density.
-        Each cluster has a center position, strength, and radius.
-        Creates smaller, more numerous clusters.
-        """
-        self.clusters = []
-        for _ in range(self.num_clusters):
-            # Random position within the map
-            x = self.random_state.uniform(0, self.width)
-            y = self.random_state.uniform(0, self.height)
+            # Map from [min_lon, max_lon] to [0, width] and [min_lat, max_lat] to [0, height]
+            x_km = ((lons[i] - self.min_lon) / (self.max_lon - self.min_lon)) * self.width
+            y_km = ((lats[i] - self.min_lat) / (self.max_lat - self.min_lat)) * self.height
             
-            # Random strength (maximum density at center)
-            strength = self.random_state.uniform(0.7, 1.0)
+            # Skip if outside our map
+            if x_km < 0 or x_km >= self.width or y_km < 0 or y_km >= self.height:
+                continue
+                
+            # Convert to grid coordinates
+            grid_x = int(x_km / self.grid_size)
+            grid_y = int(y_km / self.grid_size)
+            key = (grid_x, grid_y)
             
-            # Smaller radius of influence
-            radius = self.random_state.uniform(3.0, 8.0)  # Reduced from 5.0-20.0 to create smaller clusters
-            
-            self.clusters.append((x, y, strength, radius))
+            # Increment count for this grid cell
+            grid_counts[key] = grid_counts.get(key, 0) + 1
+            total_particles += 1
         
-        # Create a numpy array for optimized calculations
-        self.cluster_array = np.array(self.clusters)
-    
-    def _calculate_density_at_point(self, lat, long):
+        # Calculate average particles per cell if we have particles
+        if total_particles > 0:
+            # Find the maximum count for reference
+            max_count = max(grid_counts.values()) if grid_counts else 1
+            
+            # Convert counts to density values
+            for key, count in grid_counts.items():
+                # Use a simple approach: high visibility for any cell with particles
+                # Scale between 0.7 and 1.0 based on relative count
+                relative_to_max = count / max_count
+                density = 0.7 + (relative_to_max * 0.3)  # Ensures all particles are highly visible
+                
+                # Store in particle map
+                self.particle_map[key] = density
+        
+        # Print some statistics about the particle distribution
+        if total_particles > 0:
+            print(f"Time step {self.current_time_index}: {total_particles} particles in {len(grid_counts)} cells (avg: {total_particles/max(1, len(grid_counts)):.2f} per occupied cell)")
+        
+        # Increment time index for next step
+        self.current_time_index = (self.current_time_index + 1) % len(self.time_steps[0])
+        
+    def lon_lat_to_km(self, lon, lat):
         """
-        Calculate particle density at a specific point based on distance to clusters.
-        Optimized for performance with simplified calculations.
+        Convert longitude and latitude to x, y coordinates in kilometers.
         
         Args:
-            lat (float): Latitude position
-            long (float): Longitude position
+            lon (float): Longitude in degrees
+            lat (float): Latitude in degrees
             
         Returns:
-            float: Density value between 0.0 and 1.0
+            tuple: (x_km, y_km) coordinates
         """
-        # Start with base density
-        density = self.base_density
+        # Map from [min_lon, max_lon] to [0, width] and [min_lat, max_lat] to [0, height]
+        x_km = ((lon - self.min_lon) / (self.max_lon - self.min_lon)) * self.width
+        y_km = ((lat - self.min_lat) / (self.max_lat - self.min_lat)) * self.height
+        return x_km, y_km
         
-        # Simple loop-based calculation - often faster for small numbers of clusters
-        for cluster_x, cluster_y, strength, radius in self.clusters:
-            # Calculate distance to cluster center
-            dx = lat - cluster_x
-            dy = long - cluster_y
-            distance_squared = dx*dx + dy*dy
-            radius_3x_squared = (radius * 3) ** 2
+    def km_to_lon_lat(self, x_km, y_km):
+        """
+        Convert x, y coordinates in kilometers to longitude and latitude.
+        
+        Args:
+            x_km (float): X coordinate in kilometers
+            y_km (float): Y coordinate in kilometers
             
-            # Calculate density contribution using Gaussian distribution
-            if distance_squared < radius_3x_squared:  # Only consider points within 3x radius
-                # Gaussian falloff from center - avoid sqrt for performance
-                contribution = strength * math.exp(-distance_squared / (2 * radius*radius))
-                density += contribution
-        
-        # Ensure density is between 0.0 and 1.0
-        return max(0.0, min(1.0, density))
-                
-    def _update_particle_map(self):
+        Returns:
+            tuple: (lon, lat) coordinates
         """
-        Update the particle distribution map for one time step.
-        Clusters slowly drift and evolve over time.
-        Optimized for better performance.
-        """
+        # Map from [0, width] to [min_lon, max_lon] and [0, height] to [min_lat, max_lat]
+        lon = self.min_lon + (x_km / self.width) * (self.max_lon - self.min_lon)
+        lat = self.min_lat + (y_km / self.height) * (self.max_lat - self.min_lat)
+        return lon, lat
         # Update cluster positions and properties
         self._update_clusters()
         
@@ -289,74 +387,34 @@ class OceanMap(Actor):
         # Use numpy for faster operations
         if len(self.particle_map) > 0:
             keys = list(self.particle_map.keys())
-            num_to_update = int(len(keys) * update_fraction)
-            
-            if num_to_update > 0:
-                # Sample keys to update - using sample() for Python's random module
-                indices = self.random_state.sample(range(len(keys)), num_to_update)
-                keys_to_update = [keys[i] for i in indices]
-                
-                # Update the particle map with calculated densities - direct calculation is faster
-                # than the multiprocessing overhead for small batches
-                for key in keys_to_update:
-                    lat = key[0] * self.grid_size
-                    long = key[1] * self.grid_size
-                    self.particle_map[key] = self._calculate_density_at_point(lat, long)
-    
     def step(self):
         """
         Update the particle distribution for one time step.
         """
-        # Update wind direction and speed
-        self._update_wind()
-        
-        # Update the particle distribution
-        self._update_particle_map()
+        # Update the particle distribution from zarr file
+        self._update_particles_from_zarr()
         
     def _update_wind(self):
         """
         Update wind direction for this time step.
         Wind direction changes gradually over time, but speed remains constant at 0.5 knots.
         """
-        # Gradually change wind direction
-        direction_change = self.random_state.uniform(-self.wind_change_rate, self.wind_change_rate)
-        self.wind_direction = (self.wind_direction + direction_change) % (2 * math.pi)
-        
-        # Wind speed remains constant at 0.5 knots (0.093 km per step)
-        # No speed changes to maintain realistic simulation
+        # Since we're using zarr files, we don't need to update wind
+        # The particle positions are already pre-calculated
+        pass
     
-    def _update_clusters(self):
+    def km_to_lon_lat(self, x_km, y_km):
         """
-        Update cluster positions and properties for dynamic behavior.
-        Clusters drift according to wind direction and speed.
+        Convert x, y coordinates in kilometers to longitude and latitude.
+        
+        Args:
+            x_km (float): X coordinate in kilometers
+            y_km (float): Y coordinate in kilometers
+            
+        Returns:
+            tuple: (lon, lat) coordinates in degrees
         """
-        for i, (x, y, strength, radius) in enumerate(self.clusters):
-            # Drift primarily according to wind direction with some randomness
-            # Wind component (80% of movement)
-            wind_x = self.wind_speed * math.cos(self.wind_direction) * 0.8
-            wind_y = self.wind_speed * math.sin(self.wind_direction) * 0.8
-            
-            # Random component (20% of movement)
-            random_angle = self.random_state.uniform(0, 2 * math.pi)
-            random_speed = self.random_state.uniform(0, 0.1)
-            random_x = random_speed * math.cos(random_angle) * 0.2
-            random_y = random_speed * math.sin(random_angle) * 0.2
-            
-            # Combined drift
-            new_x = x + wind_x + random_x
-            new_y = y + wind_y + random_y
-            
-            # Handle map boundaries - clusters that drift off one edge appear on the opposite edge
-            new_x = new_x % self.width
-            new_y = new_y % self.height
-            
-            # Slowly change strength
-            new_strength = strength + self.random_state.uniform(-0.02, 0.02)
-            new_strength = max(0.5, min(1.0, new_strength))
-            
-            # Slowly change radius
-            new_radius = radius + self.random_state.uniform(-0.1, 0.1)
-            new_radius = max(2.0, min(10.0, new_radius))  # Keep radius within smaller bounds
-            
-            # Update cluster
-            self.clusters[i] = (new_x, new_y, new_strength, new_radius)
+        # Map from [0, width] to [min_lon, max_lon] and [0, height] to [min_lat, max_lat]
+        lon = self.min_lon + (x_km / self.width) * (self.max_lon - self.min_lon)
+        lat = self.min_lat + (y_km / self.height) * (self.max_lat - self.min_lat)
+        return lon, lat
