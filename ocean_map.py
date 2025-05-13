@@ -50,6 +50,7 @@ class OceanMap(Actor):
         """
         Get the density of particles in a specified area.
         Takes into account areas where particles have been processed (removed).
+        Optimized for performance.
         
         Args:
             polygon (list): List of (x_km, y_km) points defining the area to check
@@ -67,6 +68,7 @@ class OceanMap(Actor):
         grid_y = int(center_y_km / self.grid_size)
         key = (grid_x, grid_y)
         
+        # Use cached values when possible for better performance
         # Check if this area has been processed (particles removed)
         if key in self.processed_particles:
             # Return the reduced density after processing
@@ -79,23 +81,70 @@ class OceanMap(Actor):
             
     def process_particles_at_location(self, x_km, y_km, amount):
         """
+        Calculate particle densities for multiple points at once.
+        Optimized for performance using vectorized operations.
+        
+        Args:
+            lats (numpy.ndarray): Array of latitude positions
+            longs (numpy.ndarray): Array of longitude positions
+            
+        Returns:
+            numpy.ndarray: Array of density values between 0.0 and 1.0
+        """
+        # Start with base density for all points
+        n_points = len(lats)
+        densities = np.full(n_points, self.base_density)
+        
+        if len(self.clusters) == 0:
+            return densities
+            
+        # Get cluster data
+        cluster_positions = self.cluster_array[:, :2]  # x, y coordinates
+        strengths = self.cluster_array[:, 2]
+        radii = self.cluster_array[:, 3]
+        radii_squared_2x = 2 * (radii ** 2)
+        radii_3x_squared = (radii * 3) ** 2
+        
+        # For each point, calculate contributions from all clusters
+        for i in range(n_points):
+            lat, long = lats[i], longs[i]
+            
+            # Calculate distances to all clusters at once
+            dx = lat - cluster_positions[:, 0]
+            dy = long - cluster_positions[:, 1]
+            distances_squared = dx*dx + dy*dy
+            
+            # Only consider clusters within 3x radius
+            mask = distances_squared < radii_3x_squared
+            
+            # Calculate contributions for relevant clusters
+            if np.any(mask):
+                relevant_distances_squared = distances_squared[mask]
+                relevant_strengths = strengths[mask]
+                relevant_radii_squared = radii_squared_2x[mask]
+                
+                # Gaussian falloff from center
+                contributions = relevant_strengths * np.exp(-relevant_distances_squared / relevant_radii_squared)
+                densities[i] += np.sum(contributions)
+        
+        # Ensure densities are between 0.0 and 1.0
+        return np.clip(densities, 0.0, 1.0)
+            
+    def process_particles_at_location(self, x_km, y_km, amount):
+        """
         Process (remove) particles at a specific location.
-        Updates the processed_particles map to reflect the reduced density.
         
         Args:
             x_km (float): X position in kilometers
             y_km (float): Y position in kilometers
             amount (float): Amount of particles to process (0.0 to 1.0)
-            
-        Returns:
-            float: Actual amount of particles processed
         """
-        # Convert to grid coordinates
+        # Get the grid cell for this location
         grid_x = int(x_km / self.grid_size)
         grid_y = int(y_km / self.grid_size)
         key = (grid_x, grid_y)
         
-        # Get current density at this location
+        # Get current density
         if key in self.particle_map:
             current_density = self.particle_map[key]
         else:
@@ -108,7 +157,7 @@ class OceanMap(Actor):
         # Calculate how much can be processed (can't process more than exists)
         processable = min(amount, current_density)
         
-        # Update the processed particles map with the new reduced density
+        # Reduce density by the processed amount
         new_density = max(0.0, current_density - processable)
         self.processed_particles[key] = new_density
         
@@ -310,6 +359,50 @@ class OceanMap(Actor):
         y_km = ((lat - self.min_lat) / (self.max_lat - self.min_lat)) * self.height
         return x_km, y_km
         
+    def km_to_lon_lat(self, x_km, y_km):
+        """
+        Convert x, y coordinates in kilometers to longitude and latitude.
+        
+        Args:
+            x_km (float): X coordinate in kilometers
+            y_km (float): Y coordinate in kilometers
+            
+        Returns:
+            tuple: (lon, lat) coordinates
+        """
+        # Map from [0, width] to [min_lon, max_lon] and [0, height] to [min_lat, max_lat]
+        lon = self.min_lon + (x_km / self.width) * (self.max_lon - self.min_lon)
+        lat = self.min_lat + (y_km / self.height) * (self.max_lat - self.min_lat)
+        return lon, lat
+        # Update cluster positions and properties
+        self._update_clusters()
+        
+        # Update the numpy array for optimized calculations
+        self.cluster_array = np.array(self.clusters)
+        
+        # Recalculate densities based on new cluster positions
+        # For efficiency, only update a small portion of the grid each step
+        update_fraction = 0.05  # Update only 5% of the grid each step
+        
+        # Use numpy for faster operations
+        if len(self.particle_map) > 0:
+            keys = list(self.particle_map.keys())
+    def step(self):
+        """
+        Update the particle distribution for one time step.
+        """
+        # Update the particle distribution from zarr file
+        self._update_particles_from_zarr()
+        
+    def _update_wind(self):
+        """
+        Update wind direction for this time step.
+        Wind direction changes gradually over time, but speed remains constant at 0.5 knots.
+        """
+        # Since we're using zarr files, we don't need to update wind
+        # The particle positions are already pre-calculated
+        pass
+    
     def km_to_lon_lat(self, x_km, y_km):
         """
         Convert x, y coordinates in kilometers to longitude and latitude.
