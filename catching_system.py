@@ -8,7 +8,7 @@ class CatchingSystem(Actor):
     Can move slowly and uses a greedy algorithm to navigate toward high-density areas.
     """
     def __init__(self, x_km=0.0, y_km=0.0, move_speed=0.278, max_turn_angle=1.5, 
-                 system_span=1.4, retention_efficiency=0.8):
+                 system_span=1.4, retention_efficiency=0.8, strategy="drone"):
         """
         Initialize a CatchingSystem with position and movement capabilities.
         The system has unlimited capacity for plastic collection.
@@ -37,6 +37,8 @@ class CatchingSystem(Actor):
         # Historical data tracking
         self.historical_data = []  # Will store (x_km, y_km, density) tuples
         self.target_position = None  # Target position to move toward
+
+        self.strategy = strategy  # NEW: movement strategy
         
     def step(self, drones, ocean_map):
         """
@@ -77,11 +79,18 @@ class CatchingSystem(Actor):
             self.current_load = plastic_collected
             self.total_collected += plastic_collected
         
-        # NAVIGATION: Use only drone-observed data for navigation decisions
-        # This ensures the system only uses information it could realistically have access to
-        
-        # Determine where to move next using greedy algorithm based on observed data
-        self._update_movement_target()
+        # STRATEGY-BASED MOVEMENT
+        if self.strategy == "random":
+            self._update_movement_target_random()
+        elif self.strategy == "drone":
+            # NAVIGATION: Use only drone-observed data for navigation decisions
+            # This ensures the system only uses information it could realistically have access to
+            # Determine where to move next using greedy algorithm based on observed data
+            self._update_movement_target_greedy()
+        elif self.strategy == "full":
+            self._update_movement_target_optimal(ocean_map)
+        else:
+            raise ValueError(f"Unknown strategy: {self.strategy}")
         
         # Move toward the target
         self._move_toward_target()
@@ -204,7 +213,17 @@ class CatchingSystem(Actor):
         if len(self.historical_data) > max_history:
             self.historical_data = self.historical_data[-max_history:]
     
-    def _update_movement_target(self):
+    def _update_movement_target_random(self):
+        """Select a random direction and move."""
+        import random
+        angle = random.uniform(0, 360)
+        distance = 10.0  # Arbitrary forward movement
+        rad = math.radians(angle - 90)
+        target_x = self.x_km + distance * math.cos(rad)
+        target_y = self.y_km + distance * math.sin(rad)
+        self.target_position = (max(0, min(100, target_x)), max(0, min(100, target_y)))
+    
+    def _update_movement_target_greedy(self):
         """
         Use a smart algorithm to determine the best location to move toward.
         Analyzes historical data to find areas with high plastic density,
@@ -304,6 +323,56 @@ class CatchingSystem(Actor):
         # Set the target position
         self.target_position = (target_x, target_y)
     
+    def _update_movement_target_optimal(self, ocean_map):
+        """
+        Use an optimization algorithm (A* or similar) to find the best path.
+        The system considers the full ocean map and navigates toward the area with the highest plastic density.
+        """
+        import heapq
+        # A* search initialization
+        open_list = []
+        closed_list = set()
+        
+        # Starting point
+        start = (self.x_km, self.y_km)
+        
+        # Heuristic: Euclidean distance to a target location
+        def heuristic(a, b):
+            return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
+
+        # A* algorithm: using a priority queue (heapq)
+        heapq.heappush(open_list, (0, start))  # (cost, position)
+        came_from = {}
+        g_score = {start: 0}  # g-score is the cost from start to current node
+        f_score = {start: heuristic(start, self._find_best_target(ocean_map))}
+
+        while open_list:
+            current_f_score, current = heapq.heappop(open_list)
+            if current == self._find_best_target(ocean_map):
+                # Reconstruct path
+                self.target_position = current
+                return
+            
+            closed_list.add(current)
+            
+            # Explore neighbors (moving in 8 directions: N, S, E, W, NE, NW, SE, SW)
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                neighbor = (current[0] + dx, current[1] + dy)
+                
+                if neighbor in closed_list:
+                    continue
+                
+                tentative_g_score = g_score[current] + 1  # Assumed constant distance for simplicity
+                
+                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_g_score
+                    f_score[neighbor] = tentative_g_score + heuristic(neighbor, self._find_best_target(ocean_map))
+                    heapq.heappush(open_list, (f_score[neighbor], neighbor))
+        
+        # In case no path is found, fallback to random target (or current direction)
+        self.target_position = start
+
     def _move_toward_target(self):
         """
         Move the catching system toward the target position.
