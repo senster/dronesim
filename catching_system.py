@@ -7,7 +7,7 @@ class CatchingSystem(Actor):
     Represents a mobile system for catching plastic in the ocean detected by drones.
     Can move slowly and uses a greedy algorithm to navigate toward high-density areas.
     """
-    def __init__(self, x_km=0.0, y_km=0.0, move_speed=0.278, max_turn_angle=1.5, 
+    def __init__(self, x_km=0.0, y_km=0.0, move_speed=2.78, max_turn_angle=15.0, 
                  system_span=1.4, retention_efficiency=0.8):
         """
         Initialize a CatchingSystem with position and movement capabilities.
@@ -16,19 +16,18 @@ class CatchingSystem(Actor):
         Args:
             x_km (float): X position in kilometers from the left edge
             y_km (float): Y position in kilometers from the bottom edge
-            move_speed (float): Maximum movement speed over ground per step (km/h)
-            max_turn_angle (float): Maximum turning angle per step in degrees (1.5 degrees per step = 45 degrees per 3 hours)
+            move_speed (float): Movement speed in kilometers per hour (default: 2.78 km/h ≈ 1.5 knots)
+            max_turn_angle (float): Maximum turning angle per hour in degrees (default: 15 degrees per hour)
             system_span (float): Width of the system in kilometers for plastic collection (default: 1.4 km)
             retention_efficiency (float): Efficiency of the system in retaining plastic (0.0 to 1.0)
         """
-        super().__init__(x_km, y_km)
+        super().__init__(x_km, y_km, move_speed)
         self.current_load = 0.0  # Plastic collected in current step
         self.total_collected = 0.0  # Total plastic collected over time
         
         # Movement parameters
-        self.move_speed = move_speed  # Speed over ground (km/h)
-        self.max_turn_angle = max_turn_angle
-        self.heading = 0.0  # Degrees, 0 = North, 90 = East, etc.
+        self.max_turn_angle = max_turn_angle  # Degrees per hour
+        # self.heading is inherited from Actor
         
         # Plastic collection parameters
         self.system_span = system_span  # Width of the system in kilometers
@@ -38,7 +37,7 @@ class CatchingSystem(Actor):
         self.historical_data = []  # Will store (x_km, y_km, density) tuples
         self.target_position = None  # Target position to move toward
         
-    def step(self, drones, ocean_map):
+    def step(self, drones, ocean_map, seconds_elapsed=300.0):
         """
         Update the catching system for one time step.
         Collects data from drones, calculates plastic collection, and moves toward high-density areas.
@@ -46,6 +45,7 @@ class CatchingSystem(Actor):
         Args:
             drones (list): List of Drone objects to interact with
             ocean_map (OceanMap): Ocean map with current information for ground truth data
+            seconds_elapsed (float): Number of seconds elapsed in this step
             
         Returns:
             float: Amount of plastic collected in this step
@@ -67,7 +67,7 @@ class CatchingSystem(Actor):
             # Calculate speed through water (accounting for currents)
             # For simplicity, we'll assume currents are minimal and speed through water ≈ speed over ground
             # In a more complex simulation, we would calculate this based on current vectors
-            speed_through_water = self.move_speed  # km/h
+            speed_through_water = self.speed_km_h  # km/h
             
             # Calculate plastic catch using the formula
             # Units: (km/h) * (km) * (efficiency) * (density) = (km²/h) * density * efficiency
@@ -84,7 +84,7 @@ class CatchingSystem(Actor):
         self._update_movement_target()
         
         # Move toward the target
-        self._move_toward_target()
+        self._move_toward_target(seconds_elapsed)
                     
         return self.current_load
         
@@ -304,11 +304,14 @@ class CatchingSystem(Actor):
         # Set the target position
         self.target_position = (target_x, target_y)
     
-    def _move_toward_target(self):
+    def _move_toward_target(self, seconds_elapsed=300.0):
         """
         Move the catching system toward the target position.
-        Respects maximum speed and turning angle constraints.
+        Respects maximum speed and turning angle constraints based on elapsed time.
         Always moves at constant speed, even when near the target.
+        
+        Args:
+            seconds_elapsed (float): Number of seconds elapsed in this step
         """
         if self.target_position is None:
             # If no target, create a default one to keep moving
@@ -338,18 +341,21 @@ class CatchingSystem(Actor):
         
         # Determine how much to turn (respecting max turn angle)
         heading_diff = (target_heading - self.heading + 180) % 360 - 180
-        turn_angle = max(-self.max_turn_angle, min(self.max_turn_angle, heading_diff))
+        
+        # Calculate maximum turn angle for this time step (degrees per hour * hours elapsed)
+        max_turn_for_timestep = self.max_turn_angle * (seconds_elapsed / 3600.0)
+        
+        # Apply turn angle constraint based on elapsed time
+        turn_angle = max(-max_turn_for_timestep, min(max_turn_for_timestep, heading_diff))
         
         # Update heading
         self.heading = (self.heading + turn_angle) % 360
         
-        # Always move at constant speed
-        move_distance = self.move_speed
-        move_angle_rad = math.radians(self.heading - 90)  # Convert to radians and adjust for coordinate system
+        # Calculate distance to move based on speed and elapsed time
+        move_distance = self.calculate_movement_distance(seconds_elapsed)
         
-        # Update position
-        self.x_km += move_distance * math.cos(move_angle_rad)
-        self.y_km += move_distance * math.sin(move_angle_rad)
+        # Use the Actor's move_by_heading method to update position
+        self.move_by_heading(move_distance, self.heading)
         
     def _select_new_target(self):
         """

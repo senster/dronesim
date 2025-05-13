@@ -2,7 +2,7 @@ class SimulationEngine:
     """
     Main simulation engine that coordinates all actors and runs the simulation.
     """
-    def __init__(self, ocean_map, drones, catching_system, time_step_seconds=300.0):
+    def __init__(self, ocean_map, drones, catching_system):
         """
         Initialize the simulation engine with all necessary components.
         
@@ -36,7 +36,8 @@ class SimulationEngine:
             'system_density': []       # Current particle density at system location
         }
 
-        self.time_step_seconds = time_step_seconds  # Time step in seconds
+        # Get time step from ocean map
+        self.time_step_seconds = ocean_map.get_seconds_per_step()  # Time step in seconds
         self.elapsed_time_in_seconds = 0.0  # Simulation time in seconds
         
     def step(self):
@@ -49,7 +50,8 @@ class SimulationEngine:
 
         # Update elapsed time
         self.elapsed_time_in_seconds += self.time_step_seconds
-        # Update the ocean map
+        
+        # Update the ocean map first
         self.ocean_map.step()
         
         # Update all drones
@@ -57,8 +59,8 @@ class SimulationEngine:
         drone_densities = {}
         
         for i, drone in enumerate(self.drones):
-            # Pass the ocean map to the drone's step method
-            density = drone.step(self.ocean_map)
+            # Pass the ocean map and seconds elapsed to the drone's step method
+            density = drone.step(self.ocean_map, self.time_step_seconds)
             if density is not None:
                 particles_detected += density
                 drone_densities[i] = density
@@ -69,8 +71,8 @@ class SimulationEngine:
             self.drone_trajectories[i].append((drone.x_km, drone.y_km))
                 
         # Update the catching system
-        # Pass all drones and the ocean map to the system's step method
-        particles_processed = self.catching_system.step(self.drones, self.ocean_map)
+        # Pass all drones, ocean map, and seconds elapsed to the system's step method
+        particles_processed = self.catching_system.step(self.drones, self.ocean_map, self.time_step_seconds)
         
         # Update the ocean map to show particles being removed where the system processed them
         if particles_processed > 0:

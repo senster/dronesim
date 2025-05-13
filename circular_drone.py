@@ -8,7 +8,8 @@ class CircularDrone(Drone):
     """
     def __init__(self, x_km=0.0, y_km=0.0, scan_radius=1.0, 
                  center_x=50.0, center_y=50.0, orbit_radius=5.0,
-                 drone_id=0, total_drones=1, catching_system=None):
+                 drone_id=0, total_drones=1, catching_system=None,
+                 speed_km_h=100.0):
         """
         Initialize a CircularDrone with position and scanning capabilities.
         Drones fly in circles in front of the system rather than orbiting around it.
@@ -23,8 +24,9 @@ class CircularDrone(Drone):
             drone_id (int): ID of this drone (0-indexed)
             total_drones (int): Total number of drones in the fleet
             catching_system (CatchingSystem): Reference to the catching system
+            speed_km_h (float): Movement speed in kilometers per hour (default: 100 km/h)
         """
-        super().__init__(x_km, y_km, scan_radius)
+        super().__init__(x_km, y_km, scan_radius, speed_km_h)
         
         # Store center point coordinates
         self.center_x = center_x
@@ -78,7 +80,7 @@ class CircularDrone(Drone):
         # Initialize position
         self._update_position()
         
-    def step(self, ocean_map):
+    def step(self, ocean_map, seconds_elapsed=300.0):
         """
         Move the drone in a circular pattern and scan the area.
         Updates the center point based on the catching system's position.
@@ -86,6 +88,7 @@ class CircularDrone(Drone):
         
         Args:
             ocean_map (OceanMap): The ocean map to scan
+            seconds_elapsed (float): Number of seconds elapsed in this step
             
         Returns:
             float: Density of particles in the scanned area
@@ -101,8 +104,10 @@ class CircularDrone(Drone):
             delta_y = self.catching_system.y_km - self.center_y
             
             # Update the center point gradually to avoid teleportation
-            # Maximum center point movement per step (same as system's speed)
-            max_center_movement = 0.3  # slightly higher than system's 0.278 to avoid falling behind
+            # Maximum center point movement per step based on catching system speed
+            # Convert catching system speed from km/h to km per this time step
+            system_speed_km_h = self.catching_system.speed_km_h
+            max_center_movement = (system_speed_km_h / 3600.0) * seconds_elapsed * 1.1  # 10% faster than system to avoid falling behind
             
             # Calculate distance of center movement
             center_movement_distance = math.sqrt(delta_x**2 + delta_y**2)
@@ -122,11 +127,12 @@ class CircularDrone(Drone):
             self.y_km += delta_y
         
         # Move according to circular pattern
-        self._move_circular_pattern()
+        self._move_circular_pattern(seconds_elapsed)
         
         # Ensure the drone doesn't move too far in a single step (prevent teleporting)
         current_movement = math.sqrt((self.x_km - prev_x)**2 + (self.y_km - prev_y)**2)
-        max_drone_movement = 10.0  # Maximum distance a drone can move in one step (10 grid units)
+        # Maximum distance a drone can move in this time step based on its speed
+        max_drone_movement = self.calculate_movement_distance(seconds_elapsed)
         
         if current_movement > max_drone_movement:
             # Scale back the movement to the maximum allowed
@@ -145,15 +151,28 @@ class CircularDrone(Drone):
         
         return particle_density
         
-    def _move_circular_pattern(self):
+    def _move_circular_pattern(self, seconds_elapsed=300.0):
         """
         Move the drone in a circular pattern in front of the system.
+        
+        Args:
+            seconds_elapsed (float): Number of seconds elapsed in this step
         """
-        # Use a constant angular speed for smooth circular motion
-        angular_speed = self.base_angular_speed
+        # Calculate angular speed based on drone speed and circle radius
+        # Angular speed (rad/s) = linear speed (km/s) / radius (km)
+        linear_speed_km_s = self.speed_km_h / 3600.0  # Convert km/h to km/s
+        
+        # If circle radius is too small, use a minimum value to prevent excessive rotation
+        effective_radius = max(0.5, self.circle_radius)
+        
+        # Calculate angular speed in radians per second
+        angular_speed_rad_s = linear_speed_km_s / effective_radius
+        
+        # Calculate angle change for this time step
+        angle_change = angular_speed_rad_s * seconds_elapsed
         
         # Update angle
-        self.current_angle += angular_speed
+        self.current_angle += angle_change
         
         # Keep angle in [0, 2π) range
         if self.current_angle >= 2 * math.pi:

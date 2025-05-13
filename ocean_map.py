@@ -39,8 +39,20 @@ class OceanMap(Actor):
         self.wind_speed = 0.093  # Wind speed (0.5 knots ≈ 0.093 km per step)
         self.wind_change_rate = 0.05  # How quickly wind direction can change
         
+        # Time simulation parameters
+        self.seconds_per_step = 300.0  # 5 minutes (300 seconds) per simulation step
+        
         # Initialize with clustered particle distribution
         self._initialize_particle_map()
+        
+    def get_seconds_per_step(self):
+        """
+        Returns the number of seconds simulated in each step.
+        
+        Returns:
+            float: Number of seconds per simulation step (default: 300.0 seconds = 5 minutes)
+        """
+        return self.seconds_per_step
         
     def step(self):
         """

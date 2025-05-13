@@ -4,7 +4,7 @@ class Drone(Actor):
     """
     Base class for all drone objects in the simulation.
     """
-    def __init__(self, x_km=0.0, y_km=0.0, scan_radius=1.0):
+    def __init__(self, x_km=0.0, y_km=0.0, scan_radius=1.0, speed_km_h=100.0):
         """
         Initialize a Drone with position and scanning capabilities.
         
@@ -12,15 +12,19 @@ class Drone(Actor):
             x_km (float): X position in kilometers from the left edge
             y_km (float): Y position in kilometers from the bottom edge
             scan_radius (float): Radius of the drone's scanning area in kilometers
+            speed_km_h (float): Movement speed in kilometers per hour (default: 100 km/h)
         """
-        super().__init__(x_km, y_km)
+        super().__init__(x_km, y_km, speed_km_h)
         self.scan_radius = scan_radius
         self.particle_data = None
         
-    def step(self):
+    def step(self, seconds_elapsed=300.0):
         """
         Update the drone's state for one time step.
         This method should be overridden by specific drone implementations.
+        
+        Args:
+            seconds_elapsed (float): Number of seconds elapsed in this step
         """
         pass
         

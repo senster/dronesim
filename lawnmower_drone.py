@@ -7,7 +7,8 @@ class LawnmowerDrone(Drone):
     """
     def __init__(self, x_km=0.0, y_km=0.0, scan_radius=1.0, 
                  min_x=0.0, max_x=100.0, min_y=0.0, max_y=100.0, step_size=2.0,
-                 initial_direction=1, initial_vertical_direction=1, strategy_name=None):
+                 initial_direction=1, initial_vertical_direction=1, strategy_name=None,
+                 speed_km_h=100.0):
         """
         Initialize a LawnmowerDrone with position and scanning capabilities.
         
@@ -23,8 +24,9 @@ class LawnmowerDrone(Drone):
             initial_direction (int): Initial horizontal direction (1 for east, -1 for west)
             initial_vertical_direction (int): Initial vertical direction (1 for north, -1 for south)
             strategy_name (str, optional): Name of the scanning strategy to use
+            speed_km_h (float): Movement speed in kilometers per hour (default: 100 km/h)
         """
-        super().__init__(x_km, y_km, scan_radius)
+        super().__init__(x_km, y_km, scan_radius, speed_km_h)
         
         # Store boundaries
         self.min_x = min_x
@@ -89,12 +91,13 @@ class LawnmowerDrone(Drone):
         else:
             print("No valid strategy applied, using default parameters")
     
-    def step(self, ocean_map):
+    def step(self, ocean_map, seconds_elapsed=300.0):
         """
         Move the drone in a lawnmower pattern and scan the area.
         
         Args:
             ocean_map (OceanMap): The ocean map to scan
+            seconds_elapsed (float): Number of seconds elapsed in this step
             
         Returns:
             float: Density of particles in the scanned area
@@ -103,28 +106,40 @@ class LawnmowerDrone(Drone):
         particle_density = self.scan_area(ocean_map)
         
         # Move according to lawnmower pattern
-        self._move_lawnmower_pattern()
+        self._move_lawnmower_pattern(seconds_elapsed)
         
         return particle_density
         
-    def _move_lawnmower_pattern(self):
+    def _move_lawnmower_pattern(self, seconds_elapsed=300.0):
         """
         Move the drone in a lawnmower pattern.
         Supports different initial directions and can move in any of the four cardinal directions.
         Uses horizontal_step for movement along rows and vertical_step for movement between rows.
+        
+        Args:
+            seconds_elapsed (float): Number of seconds elapsed in this step
         """
+        # Calculate distance to move based on speed and time elapsed
+        move_distance = self.calculate_movement_distance(seconds_elapsed)
+        
+        # Scale the horizontal and vertical steps based on the time elapsed
+        # This ensures consistent movement regardless of time step size
+        time_factor = seconds_elapsed / 300.0  # Normalize to 5-minute steps
+        
         # Move horizontally (east or west) using the horizontal step size
-        self.x_km += self.direction * self.horizontal_step
+        self.x_km += self.direction * self.horizontal_step * time_factor
         
         # Check if we've reached the horizontal boundary
         if self.x_km >= self.max_x:
             self.x_km = self.max_x
-            self.y_km += self.vertical_direction * self.vertical_step  # Move north or south using vertical step
+            # Move north or south using vertical step, adjusted for time elapsed
+            self.y_km += self.vertical_direction * self.vertical_step * time_factor
             self.direction = -1  # Start moving west
             self.completed_rows += 1
         elif self.x_km <= self.min_x:
             self.x_km = self.min_x
-            self.y_km += self.vertical_direction * self.vertical_step  # Move north or south using vertical step
+            # Move north or south using vertical step, adjusted for time elapsed
+            self.y_km += self.vertical_direction * self.vertical_step * time_factor
             self.direction = 1  # Start moving east
             self.completed_rows += 1
             
