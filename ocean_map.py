@@ -186,37 +186,37 @@ class OceanMap(Actor):
             radius = self.random_state.uniform(3.0, 8.0)  # Reduced from 5.0-20.0 to create smaller clusters
             
             self.clusters.append((x, y, strength, radius))
-    
-    def _calculate_density_at_point(self, lat, long):
+
+    def _calculate_density_at_point(self, x_km, y_km):
         """
         Calculate particle density at a specific point based on distance to clusters.
-        
+
         Args:
-            lat (float): Latitude position
-            long (float): Longitude position
-            
+            x_km (float): X position in kilometers
+            y_km (float): Y position in kilometers
+
         Returns:
             float: Density value between 0.0 and 1.0
         """
         # Start with base density
         density = self.base_density * 0.3  # Lower base density to make clusters more prominent
-        
+
         # Add contribution from each cluster
         for cluster_x, cluster_y, strength, radius in self.clusters:
             # Calculate distance to cluster center
-            dx = lat - cluster_x
-            dy = long - cluster_y
-            distance = math.sqrt(dx*dx + dy*dy)
-            
+            dx = x_km - cluster_x
+            dy = y_km - cluster_y
+            distance = math.sqrt(dx * dx + dy * dy)
+
             # Calculate density contribution using Gaussian distribution
             if distance < radius * 3:  # Only consider points within 3x radius
                 # Gaussian falloff from center
-                contribution = strength * math.exp(-(distance*distance) / (2 * radius*radius))
+                contribution = strength * math.exp(-(distance * distance) / (2 * radius * radius))
                 density += contribution
-        
+
         # Ensure density is between 0.0 and 1.0
         return max(0.0, min(1.0, density))
-                
+
     def _update_particle_map(self):
         """
         Update the particle distribution map for one time step.
@@ -294,3 +294,34 @@ class OceanMap(Actor):
             
             # Update cluster
             self.clusters[i] = (new_x, new_y, new_strength, new_radius)
+
+    def get_particle_positions(self, center_x, center_y, radius):
+        """
+        Get individual particle positions within a radius of the given center point.
+
+        Args:
+            center_x (float): Center X coordinate in kilometers
+            center_y (float): Center Y coordinate in kilometers
+            radius (float): Radius to search within in kilometers
+
+        Returns:
+            list: List of (x_km, y_km) tuples for particles in the area
+        """
+        particles = []
+        resolution = 0.1  # 100m resolution
+
+        for x in np.arange(center_x - radius, center_x + radius, resolution):
+            for y in np.arange(center_y - radius, center_y + radius, resolution):
+                density = self._calculate_density_at_point(x, y)
+                # Convert density to number of particles (simplified)
+                num_particles = int(density * 10)  # Scale factor
+
+                # Add random offset to spread particles
+                for _ in range(num_particles):
+                    particle_x = x + np.random.uniform(-resolution / 2, resolution / 2)
+                    particle_y = y + np.random.uniform(-resolution / 2, resolution / 2)
+                    if ((particle_x - center_x) ** 2 +
+                            (particle_y - center_y) ** 2 <= radius ** 2):
+                        particles.append((particle_x, particle_y))
+
+        return particles
