@@ -1,0 +1,163 @@
+{
+    "metadata": {
+        ".zattrs": {
+            "Conventions": "CF-1.6/CF-1.7",
+            "feature_type": "trajectory",
+            "ncei_template_version": "NCEI_NetCDF_Trajectory_Template_v2.0",
+            "parcels_kernels": "JITParticleAdvectionRK4DeleteParticle",
+            "parcels_mesh": "spherical",
+            "parcels_version": "v3.0.5-130-g0b64b5880"
+        },
+        ".zgroup": {
+            "zarr_format": 2
+        },
+        "lat/.zarray": {
+            "chunks": [
+                1657,
+                1
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                1657,
+                288
+            ],
+            "zarr_format": 2
+        },
+        "lat/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "trajectory",
+                "obs"
+            ],
+            "axis": "Y",
+            "long_name": "",
+            "standard_name": "latitude",
+            "units": "degrees_north"
+        },
+        "lon/.zarray": {
+            "chunks": [
+                1657,
+                1
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                1657,
+                288
+            ],
+            "zarr_format": 2
+        },
+        "lon/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "trajectory",
+                "obs"
+            ],
+            "axis": "X",
+            "long_name": "",
+            "standard_name": "longitude",
+            "units": "degrees_east"
+        },
+        "obs/.zarray": {
+            "chunks": [
+                1
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<i4",
+            "fill_value": null,
+            "filters": null,
+            "order": "C",
+            "shape": [
+                288
+            ],
+            "zarr_format": 2
+        },
+        "obs/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "obs"
+            ]
+        },
+        "time/.zarray": {
+            "chunks": [
+                1657,
+                1
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<i8",
+            "fill_value": null,
+            "filters": null,
+            "order": "C",
+            "shape": [
+                1657,
+                288
+            ],
+            "zarr_format": 2
+        },
+        "time/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "trajectory",
+                "obs"
+            ],
+            "axis": "T",
+            "calendar": "proleptic_gregorian",
+            "long_name": "",
+            "standard_name": "time",
+            "units": "nanoseconds since 1970-01-01"
+        },
+        "trajectory/.zarray": {
+            "chunks": [
+                20000
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<i8",
+            "fill_value": null,
+            "filters": null,
+            "order": "C",
+            "shape": [
+                1657
+            ],
+            "zarr_format": 2
+        },
+        "trajectory/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "trajectory"
+            ]
+        }
+    },
+    "zarr_consolidated_format": 1
+}
