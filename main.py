@@ -44,7 +44,7 @@ def run_lawnmower_simulation(output_dir, strategy_name=None, zarr_path=None, num
     # Create the catching system in the center of the map
     system_x = 50.0
     system_y = 50.0
-    system = CatchingSystem(x_km=system_x, y_km=system_y)
+    system = CatchingSystem(x_km=system_x, y_km=system_y, strategy="optimal")
     
     # Create a fleet of drones all starting at the catching system's location
     # but heading in different directions to avoid path overlap

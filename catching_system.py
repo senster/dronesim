@@ -87,7 +87,7 @@ class CatchingSystem(Actor):
             # This ensures the system only uses information it could realistically have access to
             # Determine where to move next using greedy algorithm based on observed data
             self._update_movement_target_greedy()
-        elif self.strategy == "full":
+        elif self.strategy == "optimal":
             self._update_movement_target_optimal(ocean_map)
         else:
             raise ValueError(f"Unknown strategy: {self.strategy}")
@@ -322,56 +322,117 @@ class CatchingSystem(Actor):
         # Set the target position
         self.target_position = (target_x, target_y)
     
-    def _update_movement_target_optimal(self, ocean_map):
-        """
-        Use an optimization algorithm (A* or similar) to find the best path.
-        The system considers the full ocean map and navigates toward the area with the highest plastic density.
-        """
-        import heapq
-        # A* search initialization
-        open_list = []
-        closed_list = set()
+    # def _update_movement_target_optimal(self, ocean_map):
+    #     """
+    #     Use an optimization algorithm (A* or similar) to find the best path.
+    #     The system considers the full ocean map and navigates toward the area with the highest plastic density.
+    #     """
+    #     import heapq
+    #     # A* search initialization
+    #     open_list = []
+    #     closed_list = set()
         
-        # Starting point
-        start = (self.x_km, self.y_km)
+    #     # Starting point
+    #     start = (self.x_km, self.y_km)
         
-        # Heuristic: Euclidean distance to a target location
-        def heuristic(a, b):
-            return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
+    #     # Heuristic: Euclidean distance to a target location
+    #     def heuristic(a, b):
+    #         return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
 
-        # A* algorithm: using a priority queue (heapq)
-        heapq.heappush(open_list, (0, start))  # (cost, position)
-        came_from = {}
-        g_score = {start: 0}  # g-score is the cost from start to current node
-        f_score = {start: heuristic(start, self._find_best_target(ocean_map))}
+    #     # A* algorithm: using a priority queue (heapq)
+    #     heapq.heappush(open_list, (0, start))  # (cost, position)
+    #     came_from = {}
+    #     g_score = {start: 0}  # g-score is the cost from start to current node
+    #     f_score = {start: heuristic(start, self._find_best_target(ocean_map))}
 
-        while open_list:
-            current_f_score, current = heapq.heappop(open_list)
-            if current == self._find_best_target(ocean_map):
-                # Reconstruct path
-                self.target_position = current
-                return
+    #     while open_list:
+    #         current_f_score, current = heapq.heappop(open_list)
+    #         if current == self._find_best_target(ocean_map):
+    #             # Reconstruct path
+    #             self.target_position = current
+    #             return
             
-            closed_list.add(current)
+    #         closed_list.add(current)
             
-            # Explore neighbors (moving in 8 directions: N, S, E, W, NE, NW, SE, SW)
-            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
-                neighbor = (current[0] + dx, current[1] + dy)
+    #         # Explore neighbors (moving in 8 directions: N, S, E, W, NE, NW, SE, SW)
+    #         for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
+    #             neighbor = (current[0] + dx, current[1] + dy)
                 
-                if neighbor in closed_list:
+    #             if neighbor in closed_list:
+    #                 continue
+                
+    #             tentative_g_score = g_score[current] + 1  # Assumed constant distance for simplicity
+                
+    #             if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+    #                 came_from[neighbor] = current
+    #                 g_score[neighbor] = tentative_g_score
+    #                 f_score[neighbor] = tentative_g_score + heuristic(neighbor, self._find_best_target(ocean_map))
+    #                 heapq.heappush(open_list, (f_score[neighbor], neighbor))
+        
+    #     # In case no path is found, fallback to random target (or current direction)
+    #     self.target_position = start
+
+    def _update_movement_target_optimal(self, ocean_map):
+        max_density = 0.0
+        best_target = None
+        search_radius = 30.0
+        search_angle_rad = math.radians(90)  # 90 degree forward cone
+        step_km = 5  # Coarse resolution for performance
+        
+        current_heading_rad = math.radians(self.heading - 90)
+        dir_x = math.cos(current_heading_rad)
+        dir_y = math.sin(current_heading_rad)
+
+        for dx in range(-int(search_radius), int(search_radius)+1, step_km):
+            for dy in range(-int(search_radius), int(search_radius)+1, step_km):
+                x = self.x_km + dx
+                y = self.y_km + dy
+
+                if not (0 <= x <= 100 and 0 <= y <= 100):  # map bounds
+                    continue
+
+                distance = math.sqrt(dx*dx + dy*dy)
+                if distance > search_radius or distance < 5.0:
                     continue
                 
-                tentative_g_score = g_score[current] + 1  # Assumed constant distance for simplicity
+                # Compute angle between current direction and vector to cell
+                vec_x, vec_y = dx / distance, dy / distance
+                dot = dir_x * vec_x + dir_y * vec_y
+                angle = math.acos(max(-1.0, min(1.0, dot)))
                 
-                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
-                    came_from[neighbor] = current
-                    g_score[neighbor] = tentative_g_score
-                    f_score[neighbor] = tentative_g_score + heuristic(neighbor, self._find_best_target(ocean_map))
-                    heapq.heappush(open_list, (f_score[neighbor], neighbor))
-        
-        # In case no path is found, fallback to random target (or current direction)
-        self.target_position = start
+                if angle > search_angle_rad:
+                    continue
 
+                density = ocean_map.get_particles_in_area([
+                    (x-0.5, y-0.5), (x+0.5, y-0.5), (x+0.5, y+0.5), (x-0.5, y+0.5)
+                ])
+
+                if density > max_density:
+                    max_density = density
+                    best_target = (x, y)
+
+        if best_target:
+            self.target_position = best_target
+    
+    def _find_best_target(self, ocean_map):
+        """
+        Find the best target location based on the highest plastic density from the ocean map.
+        Returns the location with the highest density.
+        """
+        best_location = (self.x_km, self.y_km)
+        max_density = 0
+        
+        # Search over a grid of possible locations (assumed grid size)
+        for x in range(0, 100, 10):  # Assuming a 100 km x 100 km area with 10 km grid spacing
+            for y in range(0, 100, 10):
+                plastic_density = ocean_map.get_particles_in_area([(x, y), (x + 10, y), (x + 10, y + 10), (x, y + 10)])
+                
+                if plastic_density > max_density:
+                    max_density = plastic_density
+                    best_location = (x, y)
+        
+        return best_location
+    
     def _move_toward_target(self):
         """
         Move the catching system toward the target position.
