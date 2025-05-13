@@ -23,7 +23,7 @@ class Drone(Actor):
         self.current_heading = 20
         self.maximum_pixel_size_mm = 25
 
-        self._current_altitude_in_m = 50
+        self._current_altitude_in_m = 500
 
         self.camera_specs = self.load_camera("4k")
 
@@ -86,8 +86,8 @@ class Drone(Actor):
         heading_rad = math.radians(self.current_heading)
 
         # Half-width and half-height of FoV (in kilometers)
-        half_width = coverage["horizontal_fov_m"] / 2
-        half_height = coverage["vertical_fov_m"] / 2
+        half_width = coverage["horizontal_fov_km"] / 2
+        half_height = coverage["vertical_fov_km"] / 2
 
         # Rectangle corners before rotation (centered at origin)
         corners = [
@@ -139,14 +139,14 @@ class Drone(Actor):
         h_fov_deg = 2 * math.degrees(math.atan(sensor_width_mm  / (2 * focal_length_mm)))
         v_fov_deg = 2 * math.degrees(math.atan(sensor_height_mm / (2 * focal_length_mm)))
 
-        horizontal_fov_m = 2 * altitude_m * math.tan(math.radians(h_fov_deg / 2))
-        vertical_fov_m   = 2 * altitude_m * math.tan(math.radians(v_fov_deg / 2))
+        horizontal_fov_km = (2 * altitude_m * math.tan(math.radians(h_fov_deg / 2))) / 1_000
+        vertical_fov_km   = (2 * altitude_m * math.tan(math.radians(v_fov_deg / 2))) / 1_000
 
-        pixel_size_mm = (horizontal_fov_m * 1_000) / res_x  # m ➜ mm
+        pixel_size_mm = (horizontal_fov_km * 1_000) / res_x  # m ➜ mm
 
         return {
-            "horizontal_fov_m": horizontal_fov_m,
-            "vertical_fov_m":   vertical_fov_m,
+            "horizontal_fov_km": horizontal_fov_km,
+            "vertical_fov_km":   vertical_fov_km,
             "h_fov_deg":        h_fov_deg,
             "v_fov_deg":        v_fov_deg,
             "pixel_size_mm":    pixel_size_mm
