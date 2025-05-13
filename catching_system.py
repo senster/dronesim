@@ -52,6 +52,9 @@ class CatchingSystem(Actor):
         Returns:
             float: Amount of plastic collected in this step
         """
+        # Store reference to ocean_map for use in other methods
+        self.ocean_map = ocean_map
+        
         # Reset current load for this step
         self.current_load = 0.0
         
@@ -87,7 +90,7 @@ class CatchingSystem(Actor):
             # This ensures the system only uses information it could realistically have access to
             # Determine where to move next using greedy algorithm based on observed data
             self._update_movement_target_greedy()
-        elif self.strategy == "full":
+        elif self.strategy == "optimal":
             self._update_movement_target_optimal(ocean_map)
         else:
             raise ValueError(f"Unknown strategy: {self.strategy}")
@@ -126,17 +129,16 @@ class CatchingSystem(Actor):
         Returns:
             float: Actual plastic density at the current location (0.0 to 1.0)
         """
-        # Create a simple polygon around the current position based on the system span
-        # This ensures we only sample plastic within the system's actual span
-        half_span = self.system_span / 2
-        polygon = [
-            (self.x_km - half_span, self.y_km - half_span),
-            (self.x_km + half_span, self.y_km - half_span),
-            (self.x_km + half_span, self.y_km + half_span),
-            (self.x_km - half_span, self.y_km + half_span)
-        ]
+        # Create a single-point polygon at the system's position
+        # This ensures we only check if the center point of particles is within the system span
+        # The system span is still used in the plastic collection formula
+        point = [(self.x_km, self.y_km)]
         
-        # Get the actual density from the ocean map
+        # Since ocean_map.get_particles_in_area expects a polygon, we'll create a minimal polygon
+        # with the system's position repeated four times
+        polygon = [point[0], point[0], point[0], point[0]]
+        
+        # Get the actual density from the ocean map at this single point
         return ocean_map.get_particles_in_area(polygon)
     
     def _get_observed_plastic_density(self, drones):
@@ -324,54 +326,90 @@ class CatchingSystem(Actor):
     
     def _update_movement_target_optimal(self, ocean_map):
         """
-        Use an optimization algorithm (A* or similar) to find the best path.
-        The system considers the full ocean map and navigates toward the area with the highest plastic density.
+        Optimal strategy that uses ground truth map data to find the best target.
+        Features:
+        1. Full 360-degree search around the system
+        2. Higher resolution scanning (1km grid)
+        3. Larger search radius (50km)
+        4. Distance-weighted particle density scoring
         """
-        import heapq
-        # A* search initialization
-        open_list = []
-        closed_list = set()
+        # Initialize variables
+        best_score = 0.0
+        best_target = None
+        search_radius = 100.0  # Large search radius to find the best areas
+        step_km = 1  # High resolution for accurate targeting
         
-        # Starting point
-        start = (self.x_km, self.y_km)
-        
-        # Heuristic: Euclidean distance to a target location
-        def heuristic(a, b):
-            return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
+        # Search in a full 360-degree radius around the system
+        for dx in range(-int(search_radius), int(search_radius)+1, step_km):
+            for dy in range(-int(search_radius), int(search_radius)+1, step_km):
+                x = self.x_km + dx
+                y = self.y_km + dy
 
-        # A* algorithm: using a priority queue (heapq)
-        heapq.heappush(open_list, (0, start))  # (cost, position)
-        came_from = {}
-        g_score = {start: 0}  # g-score is the cost from start to current node
-        f_score = {start: heuristic(start, self._find_best_target(ocean_map))}
+                # Check if within map bounds
+                if not (0 <= x <= 100 and 0 <= y <= 100):
+                    continue
 
-        while open_list:
-            current_f_score, current = heapq.heappop(open_list)
-            if current == self._find_best_target(ocean_map):
-                # Reconstruct path
-                self.target_position = current
-                return
-            
-            closed_list.add(current)
-            
-            # Explore neighbors (moving in 8 directions: N, S, E, W, NE, NW, SE, SW)
-            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
-                neighbor = (current[0] + dx, current[1] + dy)
-                
-                if neighbor in closed_list:
+                # Calculate distance
+                distance = math.sqrt(dx*dx + dy*dy)
+                if distance > search_radius:
                     continue
                 
-                tentative_g_score = g_score[current] + 1  # Assumed constant distance for simplicity
+                # Get particle density at this location using ground truth data
+                density = ocean_map.get_particles_in_area([
+                    (x-0.5, y-0.5), (x+0.5, y-0.5), (x+0.5, y+0.5), (x-0.5, y+0.5)
+                ])
                 
-                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
-                    came_from[neighbor] = current
-                    g_score[neighbor] = tentative_g_score
-                    f_score[neighbor] = tentative_g_score + heuristic(neighbor, self._find_best_target(ocean_map))
-                    heapq.heappush(open_list, (f_score[neighbor], neighbor))
+                # Calculate score: density weighted by distance
+                # We want high density and low distance
+                # Use inverse square for distance to prioritize closer areas
+                distance_factor = 1.0 / (1.0 + distance/15.0)**2
+                score = density * distance_factor
+                
+                # Update best target if this location has a better score
+                if score > best_score:
+                    best_score = score
+                    best_target = (x, y)
         
-        # In case no path is found, fallback to random target (or current direction)
-        self.target_position = start
+        # Set the target position if a good one was found
+        if best_target:
+            self.target_position = best_target
+            
+    # The following code is commented out and no longer used:
+    #         current_f_score, current = heapq.heappop(open_list)
+    #         if current == self._find_best_target(ocean_map):
+    #             # Reconstruct path
+    #             self.target_position = current
+    #             return
+            
+    #         closed_list.add(current)
+            
+    #         # Explore neighbors (moving in 8 directions: N, S, E, W, NE, NW, SE, SW)
+    #         for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
+    #             neighbor = (current[0] + dx, current[1] + dy)
+                
+    #             if neighbor in closed_list:
+    #                 continue
+                
 
+    def _find_best_target(self, ocean_map):
+        """
+        Find the best target location based on the highest plastic density from the ocean map.
+        Returns the location with the highest density.
+        """
+        best_location = (self.x_km, self.y_km)
+        max_density = 0
+        
+        # Search over a grid of possible locations (assumed grid size)
+        for x in range(0, 100, 10):  # Assuming a 100 km x 100 km area with 10 km grid spacing
+            for y in range(0, 100, 10):
+                plastic_density = ocean_map.get_particles_in_area([(x, y), (x + 10, y), (x + 10, y + 10), (x, y + 10)])
+                
+                if plastic_density > max_density:
+                    max_density = plastic_density
+                    best_location = (x, y)
+        
+        return best_location
+    
     def _move_toward_target(self):
         """
         Move the catching system toward the target position.
@@ -427,8 +465,16 @@ class CatchingSystem(Actor):
         Uses historical data if available, otherwise selects a target
         in the current direction of travel.
         """
-        # Try to update movement target based on historical data
-        self._update_movement_target()
+        # Try to update movement target based on strategy
+        if self.strategy == "random":
+            self._update_movement_target_random()
+        elif self.strategy == "drone":
+            self._update_movement_target_greedy()
+        elif self.strategy == "optimal":
+            self._update_movement_target_optimal(self.ocean_map)
+        else:
+            # Fallback to default target
+            self._set_default_target()
         
         # If no target was set from historical data, create one in current direction
         if self.target_position is None:

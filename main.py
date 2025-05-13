@@ -41,15 +41,26 @@ def run_lawnmower_simulation(output_dir, strategy_name=None, zarr_path=None, num
     # Create the ocean map with zarr path
     ocean = OceanMap(width=100.0, height=100.0, zarr_path=zarr_path)
     
-    # Create the catching system in the center of the map
-    system_x = 50.0
-    system_y = 50.0
-    system = CatchingSystem(x_km=system_x, y_km=system_y)
+    # Create three catching systems with different strategies, all starting at the same position
+    system_x = 50.0  # Center of the map
+    system_y = 50.0  # Center of the map
     
-    # Create a fleet of drones all starting at the catching system's location
+    # First system with "drone" strategy
+    system1 = CatchingSystem(x_km=system_x, y_km=system_y, strategy="drone")
+    
+    # Second system with "random" strategy
+    system2 = CatchingSystem(x_km=system_x, y_km=system_y, strategy="random")
+    
+    # Third system with "optimal" strategy
+    system3 = CatchingSystem(x_km=system_x, y_km=system_y, strategy="optimal")
+    
+    # Create a list of catching systems
+    systems = [system1, system2, system3]
+    
+    # Create a fleet of drones all starting between the two catching systems
     # but heading in different directions to avoid path overlap
     drones = [
-        # Drone 1: Start at system, move east and north
+        # Drone 1: Start between systems, move east and north
         # Field of view is 300m x 300m (0.3km x 0.3km)
         # Using a small step size (2.0 km) for a denser pattern with more lines
         LawnmowerDrone(x_km=system_x, y_km=system_y, scan_radius=0.3, 
@@ -57,7 +68,7 @@ def run_lawnmower_simulation(output_dir, strategy_name=None, zarr_path=None, num
                        step_size=2.0, initial_direction=1, initial_vertical_direction=1,
                        strategy_name=strategy_name),
         
-        # Drone 2: Start at system, move west and south
+        # Drone 2: Start between systems, move west and south
         # Field of view is 300m x 300m (0.3km x 0.3km)
         # Using a small step size (2.0 km) for a denser pattern with more lines
         LawnmowerDrone(x_km=system_x, y_km=system_y, scan_radius=0.3, 
@@ -68,7 +79,7 @@ def run_lawnmower_simulation(output_dir, strategy_name=None, zarr_path=None, num
     
     # Include strategy name and seed in pattern_name if provided
     pattern_name = "lawnmower"
-    pattern_params = {}
+    pattern_params = {"comparison": "drone-vs-random-vs-optimal"}
     
     if strategy_name:
         # Get strategy parameters for filename
@@ -83,9 +94,11 @@ def run_lawnmower_simulation(output_dir, strategy_name=None, zarr_path=None, num
         else:
             pattern_params = {"strategy": strategy_name}
     
-    # No need to add seed parameter since we're using zarr files
-            
-    return run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params, num_steps)
+    # Add comparison info to pattern parameters
+    pattern_params["comparison"] = "drone-vs-random-vs-optimal"
+    
+    # Pass the list of catching systems to run_simulation
+    return run_simulation(ocean, drones, systems, output_dir, pattern_name, pattern_params, num_steps)
 
 def run_circular_simulation(output_dir, zarr_path=None, num_steps=200):
     """
@@ -99,38 +112,51 @@ def run_circular_simulation(output_dir, zarr_path=None, num_steps=200):
     # Create the ocean map with particles from zarr file
     ocean = OceanMap(zarr_path=zarr_path)
     
-    # Create a catching system in the center of the map
-    system_x = ocean.width / 2
-    system_y = ocean.height / 2
-    system = CatchingSystem(x_km=system_x, y_km=system_y)
+    # Create three catching systems with different strategies, all starting at the same position
+    system_x = ocean.width / 2  # Center of the map
+    system_y = ocean.height / 2  # Center of the map
     
-    # Create drones in a circular pattern around the catching system
+    # First system with "drone" strategy
+    system1 = CatchingSystem(x_km=system_x, y_km=system_y, strategy="drone")
+    
+    # Second system with "random" strategy
+    system2 = CatchingSystem(x_km=system_x, y_km=system_y, strategy="random")
+    
+    # Third system with "optimal" strategy
+    system3 = CatchingSystem(x_km=system_x, y_km=system_y, strategy="optimal")
+    
+    # Create a list of catching systems
+    systems = [system1, system2, system3]
+    
+    # Create drones in a circular pattern around the drone-based catching system
+    # These drones will move along with the drone-based system (system1)
+    # All drones start at the system's position and will orbit from there
     drones = [
-        CircularDrone(x_km=system_x, y_km=system_y + 5, scan_radius=0.3,
+        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
                      center_x=system_x, center_y=system_y,
                      orbit_radius=5.0, drone_id=0, total_drones=5,
-                     catching_system=system),
-        CircularDrone(x_km=system_x + 5, y_km=system_y, scan_radius=0.3,
+                     catching_system=system1),  # Link to drone-based system
+        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
                      center_x=system_x, center_y=system_y,
                      orbit_radius=5.0, drone_id=1, total_drones=5,
-                     catching_system=system),
-        CircularDrone(x_km=system_x, y_km=system_y - 5, scan_radius=0.3,
+                     catching_system=system1),  # Link to drone-based system
+        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
                      center_x=system_x, center_y=system_y,
                      orbit_radius=5.0, drone_id=2, total_drones=5,
-                     catching_system=system),
-        CircularDrone(x_km=system_x - 5, y_km=system_y, scan_radius=0.3,
+                     catching_system=system1),  # Link to drone-based system
+        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
                      center_x=system_x, center_y=system_y,
                      orbit_radius=5.0, drone_id=3, total_drones=5,
-                     catching_system=system),
+                     catching_system=system1),  # Link to drone-based system
         CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
                      center_x=system_x, center_y=system_y,
                      orbit_radius=3.0, drone_id=4, total_drones=5,
-                     catching_system=system)
+                     catching_system=system1)  # Link to drone-based system
     ]
     
     # Create pattern parameters for the filename
-    pattern_params = {}
-    return run_simulation(ocean, drones, system, output_dir, "circular", pattern_params, num_steps)
+    pattern_params = {"comparison": "drone-vs-random-vs-optimal"}
+    return run_simulation(ocean, drones, systems, output_dir, "circular", pattern_params, num_steps)
 
 def run_ai_simulation(output_dir, zarr_path=None, num_drones=4, num_steps=200):
     """
@@ -204,63 +230,6 @@ def run_ai_simulation(output_dir, zarr_path=None, num_drones=4, num_steps=200):
     }
             
     return run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params, num_steps)
-
-def run_circular_simulation(output_dir, zarr_path=None, num_steps=200):
-    """
-    Run a simulation using circular pattern drones.
-    
-    Args:
-        output_dir (str): Directory to save output files
-        zarr_path (str, optional): Path to the zarr file containing particle data
-        num_steps (int, optional): Number of simulation steps to run
-        
-    Returns:
-        tuple: (final_stats, gif_path)
-    """
-    # Create the ocean map with zarr path
-    ocean = OceanMap(width=100.0, height=100.0, zarr_path=zarr_path)
-    
-    # Create the catching system in the center of the map
-    system_x = 50.0
-    system_y = 50.0
-    system = CatchingSystem(x_km=system_x, y_km=system_y)
-    
-    # Create a fleet of circular drones
-    drones = [
-        # Drone 1: Closest to the system, small circle
-        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
-                     center_x=system_x, center_y=system_y,
-                     orbit_radius=2.0, drone_id=0, total_drones=5,
-                     catching_system=system),
-        
-        # Drone 2: Medium distance, left side
-        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
-                     center_x=system_x, center_y=system_y,
-                     orbit_radius=2.5, drone_id=1, total_drones=5,
-                     catching_system=system),
-        
-        # Drone 3: Medium distance, right side
-        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
-                     center_x=system_x, center_y=system_y,
-                     orbit_radius=2.5, drone_id=2, total_drones=5,
-                     catching_system=system),
-        
-        # Drone 4: Further out, left side
-        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
-                     center_x=system_x, center_y=system_y,
-                     orbit_radius=3.0, drone_id=3, total_drones=5,
-                     catching_system=system),
-        
-        # Drone 5: Further out, right side
-        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
-                     center_x=system_x, center_y=system_y,
-                     orbit_radius=3.0, drone_id=4, total_drones=5,
-                     catching_system=system)
-    ]
-    
-    # Create pattern parameters for the filename
-    pattern_params = {}
-    return run_simulation(ocean, drones, system, output_dir, "circular", pattern_params, num_steps)
 
 def run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params={}, num_steps=200):
     """
