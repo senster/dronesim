@@ -276,11 +276,16 @@ class SimulationVisualizer:
                     if key in self.ocean_map.particle_map:
                         Z[i, j] = self.ocean_map.particle_map[key]
                     else:
+                        Z[i, j] = 0.0  # Default to zero density if not in particle map
+        
                         Z[i, j] = self.ocean_map.base_density
 
         # Plot the heatmap with blue (low density) to red (high density) colormap
         im = ax.pcolormesh(X, Y, Z, cmap='coolwarm', alpha=0.7, vmin=0, vmax=1)
         plt.colorbar(im, ax=ax, label="Particle Density")
+        
+        # No need to plot clusters as they've been removed from the OceanMap class
+        
 
         # Optionally plot cluster centers for debugging
         if hasattr(self.ocean_map, 'clusters'):
@@ -298,6 +303,9 @@ class SimulationVisualizer:
         Args:
             ax (matplotlib.axes.Axes): Axes to plot on
         """
+        # Wind visualization removed as we're now using zarr files for particle data
+        pass
+    
         if hasattr(self.ocean_map, 'wind_direction') and hasattr(self.ocean_map, 'wind_speed'):
             # Get wind parameters
             wind_dir = self.ocean_map.wind_direction
