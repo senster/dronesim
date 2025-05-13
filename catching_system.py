@@ -8,7 +8,7 @@ class CatchingSystem(Actor):
     Can move slowly and uses a greedy algorithm to navigate toward high-density areas.
     """
     def __init__(self, lat=0.0, long=0.0, move_speed=0.278, max_turn_angle=1.5, 
-                 system_span=50.0, retention_efficiency=0.8):
+                 system_span=1.4, retention_efficiency=0.8):
         """
         Initialize a CatchingSystem with position and movement capabilities.
         The system has unlimited capacity for plastic collection.
@@ -18,7 +18,7 @@ class CatchingSystem(Actor):
             long (float): Longitude position
             move_speed (float): Maximum movement speed over ground per step (km/h)
             max_turn_angle (float): Maximum turning angle per step in degrees (1.5 degrees per step = 45 degrees per 3 hours)
-            system_span (float): Width of the system in meters for plastic collection
+            system_span (float): Width of the system in kilometers for plastic collection (default: 1.4 km)
             retention_efficiency (float): Efficiency of the system in retaining plastic (0.0 to 1.0)
         """
         super().__init__(lat, long)
@@ -31,21 +31,21 @@ class CatchingSystem(Actor):
         self.heading = 0.0  # Degrees, 0 = North, 90 = East, etc.
         
         # Plastic collection parameters
-        self.system_span = system_span  # Width of the system in meters
+        self.system_span = system_span  # Width of the system in kilometers
         self.retention_efficiency = retention_efficiency  # Efficiency in retaining plastic
         
         # Historical data tracking
         self.historical_data = []  # Will store (lat, long, density) tuples
         self.target_position = None  # Target position to move toward
         
-    def step(self, drones, ocean_map=None):
+    def step(self, drones, ocean_map):
         """
         Update the catching system for one time step.
         Collects data from drones, calculates plastic collection, and moves toward high-density areas.
         
         Args:
             drones (list): List of Drone objects to interact with
-            ocean_map (OceanMap, optional): Ocean map with current information
+            ocean_map (OceanMap): Ocean map with current information for ground truth data
             
         Returns:
             float: Amount of plastic collected in this step
@@ -53,14 +53,15 @@ class CatchingSystem(Actor):
         # Reset current load for this step
         self.current_load = 0.0
         
-        # Collect historical data from all drones
+        # Collect historical data from all drones for navigation purposes
         self._collect_historical_data(drones)
         
+        # PLASTIC COLLECTION: Use ground truth data for accurate collection calculation
         # Calculate plastic collection based on the formula:
         # Plastic catch = (Speed Through Water) * (System Span) * (Retention Efficiency) * (Encountered Plastic Density)
         
-        # Get the plastic density at the current location
-        plastic_density = self._get_current_plastic_density(drones)
+        # Get the actual plastic density from ground truth data
+        plastic_density = self._get_ground_truth_plastic_density(ocean_map)
         
         if plastic_density > 0:
             # Calculate speed through water (accounting for currents)
@@ -68,18 +69,18 @@ class CatchingSystem(Actor):
             # In a more complex simulation, we would calculate this based on current vectors
             speed_through_water = self.move_speed  # km/h
             
-            # Convert system span from meters to kilometers for consistent units
-            system_span_km = self.system_span / 1000.0  # km
-            
             # Calculate plastic catch using the formula
             # Units: (km/h) * (km) * (efficiency) * (density) = (km²/h) * density * efficiency
-            plastic_collected = speed_through_water * system_span_km * self.retention_efficiency * plastic_density
+            plastic_collected = speed_through_water * self.system_span * self.retention_efficiency * plastic_density
             
             # Update collection totals
             self.current_load = plastic_collected
             self.total_collected += plastic_collected
         
-        # Determine where to move next using greedy algorithm
+        # NAVIGATION: Use only drone-observed data for navigation decisions
+        # This ensures the system only uses information it could realistically have access to
+        
+        # Determine where to move next using greedy algorithm based on observed data
         self._update_movement_target()
         
         # Move toward the target
@@ -87,16 +88,59 @@ class CatchingSystem(Actor):
                     
         return self.current_load
         
-    def _get_current_plastic_density(self, drones):
+    def _get_current_plastic_density(self, drones, ocean_map):
         """
         Get the plastic density at the current location of the system.
-        Uses data from nearby drones or historical data if available.
+        This is a dispatcher method that calls the appropriate specialized method.
+        
+        For plastic catch calculation: Uses ground truth data from ocean_map.
+        For navigation decisions: Uses only data from drones or historical data.
+        
+        Args:
+            drones (list): List of Drone objects to get data from
+            ocean_map (OceanMap): Ocean map with ground truth data
+            
+        Returns:
+            float: Plastic density at the current location (0.0 to 1.0)
+        """
+        # For plastic catch calculation, always use ground truth data
+        return self._get_ground_truth_plastic_density(ocean_map)
+    
+    def _get_ground_truth_plastic_density(self, ocean_map):
+        """
+        Get the actual plastic density at the current location using ground truth data.
+        This method is used for accurate plastic collection calculation.
+        
+        Args:
+            ocean_map (OceanMap): Ocean map with ground truth data
+            
+        Returns:
+            float: Actual plastic density at the current location (0.0 to 1.0)
+        """
+        # Create a simple polygon around the current position based on the system span
+        # This ensures we only sample plastic within the system's actual span
+        half_span = self.system_span / 2
+        polygon = [
+            (self.lat - half_span, self.long - half_span),
+            (self.lat + half_span, self.long - half_span),
+            (self.lat + half_span, self.long + half_span),
+            (self.lat - half_span, self.long + half_span)
+        ]
+        
+        # Get the actual density from the ocean map
+        return ocean_map.get_particles_in_area(polygon)
+    
+    def _get_observed_plastic_density(self, drones):
+        """
+        Get the observed plastic density at the current location using only drone data.
+        This method is used for navigation decisions to ensure the system only uses
+        information it could realistically have access to.
         
         Args:
             drones (list): List of Drone objects to get data from
             
         Returns:
-            float: Plastic density at the current location (0.0 to 1.0)
+            float: Observed plastic density at the current location (0.0 to 1.0)
         """
         # First check if any drones are directly at our location
         for drone in drones:

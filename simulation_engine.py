@@ -69,8 +69,8 @@ class SimulationEngine:
             self.drone_trajectories[i].append((drone.long, drone.lat))
                 
         # Update the catching system
-        # Pass all drones to the system's step method
-        particles_processed = self.catching_system.step(self.drones)
+        # Pass all drones and the ocean map to the system's step method
+        particles_processed = self.catching_system.step(self.drones, self.ocean_map)
         
         # Update the ocean map to show particles being removed where the system processed them
         if particles_processed > 0:
