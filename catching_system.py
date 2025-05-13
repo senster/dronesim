@@ -4,44 +4,51 @@ from actor import Actor
 
 class CatchingSystem(Actor):
     """
-    Represents a mobile system for catching or processing particles detected by drones.
+    Represents a mobile system for catching plastic in the ocean detected by drones.
     Can move slowly and uses a greedy algorithm to navigate toward high-density areas.
     """
-    def __init__(self, lat=0.0, long=0.0, capacity=100.0, move_speed=0.278, max_turn_angle=1.5):
+    def __init__(self, lat=0.0, long=0.0, move_speed=0.278, max_turn_angle=1.5, 
+                 system_span=50.0, retention_efficiency=0.8):
         """
-        Initialize a CatchingSystem with position, capacity, and movement capabilities.
+        Initialize a CatchingSystem with position and movement capabilities.
+        The system has unlimited capacity for plastic collection.
         
         Args:
             lat (float): Latitude position
             long (float): Longitude position
-            capacity (float): Maximum processing capacity per step
-            move_speed (float): Maximum movement speed per step
+            move_speed (float): Maximum movement speed over ground per step (km/h)
             max_turn_angle (float): Maximum turning angle per step in degrees (1.5 degrees per step = 45 degrees per 3 hours)
+            system_span (float): Width of the system in meters for plastic collection
+            retention_efficiency (float): Efficiency of the system in retaining plastic (0.0 to 1.0)
         """
         super().__init__(lat, long)
-        self.capacity = capacity
-        self.current_load = 0.0
-        self.total_processed = 0.0
+        self.current_load = 0.0  # Plastic collected in current step
+        self.total_collected = 0.0  # Total plastic collected over time
         
         # Movement parameters
-        self.move_speed = move_speed
+        self.move_speed = move_speed  # Speed over ground (km/h)
         self.max_turn_angle = max_turn_angle
         self.heading = 0.0  # Degrees, 0 = North, 90 = East, etc.
+        
+        # Plastic collection parameters
+        self.system_span = system_span  # Width of the system in meters
+        self.retention_efficiency = retention_efficiency  # Efficiency in retaining plastic
         
         # Historical data tracking
         self.historical_data = []  # Will store (lat, long, density) tuples
         self.target_position = None  # Target position to move toward
         
-    def step(self, drones):
+    def step(self, drones, ocean_map=None):
         """
         Update the catching system for one time step.
-        Collects data from drones, processes particles, and moves toward high-density areas.
+        Collects data from drones, calculates plastic collection, and moves toward high-density areas.
         
         Args:
             drones (list): List of Drone objects to interact with
+            ocean_map (OceanMap, optional): Ocean map with current information
             
         Returns:
-            float: Amount of particles processed in this step
+            float: Amount of plastic collected in this step
         """
         # Reset current load for this step
         self.current_load = 0.0
@@ -49,18 +56,28 @@ class CatchingSystem(Actor):
         # Collect historical data from all drones
         self._collect_historical_data(drones)
         
-        # Process data from nearby drones
-        for drone in drones:
-            # Check if drone is within range
-            if self._is_in_range(drone) and drone.particle_data is not None:
-                # Process some of the particles detected by the drone
-                processed = min(drone.particle_data * 10, self.capacity - self.current_load)
-                self.current_load += processed
-                self.total_processed += processed
-                
-                # If we've reached capacity, stop processing
-                if self.current_load >= self.capacity:
-                    break
+        # Calculate plastic collection based on the formula:
+        # Plastic catch = (Speed Through Water) * (System Span) * (Retention Efficiency) * (Encountered Plastic Density)
+        
+        # Get the plastic density at the current location
+        plastic_density = self._get_current_plastic_density(drones)
+        
+        if plastic_density > 0:
+            # Calculate speed through water (accounting for currents)
+            # For simplicity, we'll assume currents are minimal and speed through water ≈ speed over ground
+            # In a more complex simulation, we would calculate this based on current vectors
+            speed_through_water = self.move_speed  # km/h
+            
+            # Convert system span from meters to kilometers for consistent units
+            system_span_km = self.system_span / 1000.0  # km
+            
+            # Calculate plastic catch using the formula
+            # Units: (km/h) * (km) * (efficiency) * (density) = (km²/h) * density * efficiency
+            plastic_collected = speed_through_water * system_span_km * self.retention_efficiency * plastic_density
+            
+            # Update collection totals
+            self.current_load = plastic_collected
+            self.total_collected += plastic_collected
         
         # Determine where to move next using greedy algorithm
         self._update_movement_target()
@@ -69,6 +86,44 @@ class CatchingSystem(Actor):
         self._move_toward_target()
                     
         return self.current_load
+        
+    def _get_current_plastic_density(self, drones):
+        """
+        Get the plastic density at the current location of the system.
+        Uses data from nearby drones or historical data if available.
+        
+        Args:
+            drones (list): List of Drone objects to get data from
+            
+        Returns:
+            float: Plastic density at the current location (0.0 to 1.0)
+        """
+        # First check if any drones are directly at our location
+        for drone in drones:
+            if self._is_in_range(drone, max_range=1.0) and drone.particle_data is not None:
+                return drone.particle_data
+        
+        # If no drones are nearby, use historical data if available
+        if self.historical_data:
+            # Find the closest historical data point
+            closest_distance = float('inf')
+            closest_density = 0.0
+            
+            for lat, long, density in self.historical_data:
+                dx = self.lat - lat
+                dy = self.long - long
+                distance = math.sqrt(dx*dx + dy*dy)
+                
+                if distance < closest_distance:
+                    closest_distance = distance
+                    closest_density = density
+            
+            # Only use historical data if it's reasonably close
+            if closest_distance < 5.0:  # Within 5 km
+                return closest_density
+        
+        # Default to a low density if no data is available
+        return 0.1  # Baseline plastic density
         
     def _is_in_range(self, drone, max_range=15.0):
         """
@@ -90,14 +145,14 @@ class CatchingSystem(Actor):
         
     def _collect_historical_data(self, drones):
         """
-        Collect historical data from all drones.
+        Collect historical plastic density data from all drones.
         
         Args:
             drones (list): List of Drone objects to collect data from
         """
         for drone in drones:
             if drone.particle_data is not None:
-                # Store the position and density data
+                # Store the position and plastic density data
                 self.historical_data.append((drone.lat, drone.long, drone.particle_data))
                 
         # Limit the size of historical data to prevent memory issues
@@ -108,14 +163,14 @@ class CatchingSystem(Actor):
     def _update_movement_target(self):
         """
         Use a smart algorithm to determine the best location to move toward.
-        Analyzes historical data to find areas with high particle density,
+        Analyzes historical data to find areas with high plastic density,
         while considering the system's current heading and turning limitations.
         Prefers targets that are in front of the system rather than behind it.
         """
         if not self.historical_data:
             return  # No historical data to analyze
             
-        # Create a grid of the area and aggregate density data
+        # Create a grid of the area and aggregate plastic density data
         grid_size = 10
         grid = {}
         
@@ -126,13 +181,13 @@ class CatchingSystem(Actor):
             grid_y = int(long / grid_size)
             key = (grid_x, grid_y)
             
-            # Update grid cell with density data
+            # Update grid cell with plastic density data
             if key in grid:
                 grid[key] = (grid[key] + density) / 2  # Average with existing data
             else:
                 grid[key] = density
         
-        # Calculate scores for each grid cell based on density and direction
+        # Calculate scores for each grid cell based on plastic density and direction
         scored_cells = []
         
         # Current heading in radians (adjusted for coordinate system)
@@ -190,7 +245,7 @@ class CatchingSystem(Actor):
             # Optimal distance is around 20-30 grid units
             distance_score = 1.0 / (1.0 + abs(distance - 25.0) / 25.0)
             
-            # Calculate final score (density is most important, but direction matters)
+            # Calculate final score (plastic density is most important, but direction matters)
             final_score = density * (0.7 * direction_score + 0.3 * distance_score)
             
             scored_cells.append(((grid_x, grid_y), final_score, (cell_lat, cell_long)))
@@ -268,7 +323,7 @@ class CatchingSystem(Actor):
     def _set_default_target(self):
         """
         Set a default target in the current direction of travel
-        to ensure continuous movement.
+        to ensure continuous movement for efficient plastic collection.
         """
         # Move in current heading direction
         move_angle_rad = math.radians(self.heading - 90)

@@ -37,7 +37,7 @@ def run_lawnmower_simulation(output_dir):
     # Create the catching system in the center of the map
     system_lat = 50.0
     system_long = 50.0
-    system = CatchingSystem(lat=system_lat, long=system_long, capacity=50.0)
+    system = CatchingSystem(lat=system_lat, long=system_long)
     
     # Create a fleet of drones all starting at the catching system's location
     # but heading in different directions to avoid path overlap
@@ -75,7 +75,7 @@ def run_circular_simulation(output_dir):
     # Create the catching system in the center of the map
     system_lat = 50.0
     system_long = 50.0
-    system = CatchingSystem(lat=system_lat, long=system_long, capacity=50.0)
+    system = CatchingSystem(lat=system_lat, long=system_long)
     
     # Create a fleet of circular drones
     # Each drone will fly in circles in front of the system
