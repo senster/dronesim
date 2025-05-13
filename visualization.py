@@ -358,7 +358,7 @@ class SimulationVisualizer:
         
         # Plot target position if available
         if hasattr(self.catching_system, 'target_position') and self.catching_system.target_position is not None:
-            target_y_km, target_x_km = self.catching_system.target_position
+            target_x_km, target_y_km = self.catching_system.target_position  # Corrected order: x, y
             ax.scatter(target_x_km, target_y_km, 
                       color='yellow', s=100, marker='*', 
                       edgecolors='black', linewidths=1, label="Target Position")
