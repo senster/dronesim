@@ -23,7 +23,7 @@ from simulation_engine import SimulationEngine
 from visualization import SimulationVisualizer
 from strategy_manager import StrategyManager
 
-def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None):
+def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None, steps=200):
     """
     Run a simulation using lawnmower pattern drones.
     
@@ -31,6 +31,7 @@ def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None):
         output_dir (str): Directory to save output files
         strategy_name (str, optional): Name of the scanning strategy to use
         seed (int, optional): Random seed for reproducible particle dispersion
+        steps (int): Number of steps to run simulation for
         
     Returns:
         tuple: (final_stats, gif_path)
@@ -83,15 +84,16 @@ def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None):
     # Add seed to pattern parameters
     pattern_params["seed"] = ocean.seed
             
-    return run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params)
+    return run_simulation(200, ocean, drones, system, output_dir, pattern_name, pattern_params)
 
-def run_circular_simulation(output_dir, seed=None):
+def run_circular_simulation(output_dir, seed=None, steps=200):
     """
     Run a simulation using circular pattern drones.
     
     Args:
         output_dir (str): Directory to save output files
         seed (int, optional): Random seed for reproducible particle dispersion
+        steps (int): Number of steps to run simulation for
         
     Returns:
         tuple: (final_stats, gif_path)
@@ -141,13 +143,14 @@ def run_circular_simulation(output_dir, seed=None):
     
     # Add seed to pattern parameters
     pattern_params = {"seed": ocean.seed}
-    return run_simulation(ocean, drones, system, output_dir, "circular", pattern_params)
+    return run_simulation(steps, ocean, drones, system, output_dir, "circular", pattern_params)
 
-def run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params={}):
+def run_simulation(steps, ocean, drones, system, output_dir, pattern_name, pattern_params={}):
     """
     Run a simulation with the given components.
     
     Args:
+        steps (int): Number of steps
         ocean (OceanMap): The ocean map
         drones (list): List of drone objects
         system (CatchingSystem): The catching system
@@ -165,7 +168,7 @@ def run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_para
     visualizer = SimulationVisualizer(ocean, drones, system, output_dir=output_dir, simulation_engine=simulation)
     
     # Number of steps to run
-    num_steps = 200  # Increased to see longer simulation behavior
+    num_steps = steps
     
     # Run the simulation
     print(f"Starting simulation with {pattern_name} pattern drones...")
@@ -243,6 +246,7 @@ def main():
     parser.add_argument("--strategy", "-s", help="Scanning strategy for lawnmower pattern")
     parser.add_argument("--list-strategies", "-l", action="store_true", help="List available scanning strategies")
     parser.add_argument("--seed", type=int, help="Random seed for reproducible particle dispersion")
+    parser.add_argument("--steps", type=int, help="Number of steps to simulate", default=200)
     
     args = parser.parse_args()
     
@@ -255,9 +259,9 @@ def main():
     if args.pattern == "circular":
         if args.strategy:
             print("Note: Strategy selection is only applicable for lawnmower pattern")
-        run_circular_simulation(output_dir, args.seed)
+        run_circular_simulation(output_dir, args.seed, args.steps)
     else:
-        run_lawnmower_simulation(output_dir, args.strategy, args.seed)
+        run_lawnmower_simulation(output_dir, args.strategy, args.seed, args.steps)
 
 if __name__ == "__main__":
     main()
