@@ -7,21 +7,21 @@ class CatchingSystem(Actor):
     Represents a mobile system for catching plastic in the ocean detected by drones.
     Can move slowly and uses a greedy algorithm to navigate toward high-density areas.
     """
-    def __init__(self, lat=0.0, long=0.0, move_speed=0.278, max_turn_angle=1.5, 
+    def __init__(self, x_km=0.0, y_km=0.0, move_speed=0.278, max_turn_angle=1.5, 
                  system_span=1.4, retention_efficiency=0.8):
         """
         Initialize a CatchingSystem with position and movement capabilities.
         The system has unlimited capacity for plastic collection.
         
         Args:
-            lat (float): Latitude position
-            long (float): Longitude position
+            x_km (float): X position in kilometers from the left edge
+            y_km (float): Y position in kilometers from the bottom edge
             move_speed (float): Maximum movement speed over ground per step (km/h)
             max_turn_angle (float): Maximum turning angle per step in degrees (1.5 degrees per step = 45 degrees per 3 hours)
             system_span (float): Width of the system in kilometers for plastic collection (default: 1.4 km)
             retention_efficiency (float): Efficiency of the system in retaining plastic (0.0 to 1.0)
         """
-        super().__init__(lat, long)
+        super().__init__(x_km, y_km)
         self.current_load = 0.0  # Plastic collected in current step
         self.total_collected = 0.0  # Total plastic collected over time
         
@@ -35,7 +35,7 @@ class CatchingSystem(Actor):
         self.retention_efficiency = retention_efficiency  # Efficiency in retaining plastic
         
         # Historical data tracking
-        self.historical_data = []  # Will store (lat, long, density) tuples
+        self.historical_data = []  # Will store (x_km, y_km, density) tuples
         self.target_position = None  # Target position to move toward
         
     def step(self, drones, ocean_map):
@@ -121,10 +121,10 @@ class CatchingSystem(Actor):
         # This ensures we only sample plastic within the system's actual span
         half_span = self.system_span / 2
         polygon = [
-            (self.lat - half_span, self.long - half_span),
-            (self.lat + half_span, self.long - half_span),
-            (self.lat + half_span, self.long + half_span),
-            (self.lat - half_span, self.long + half_span)
+            (self.x_km - half_span, self.y_km - half_span),
+            (self.x_km + half_span, self.y_km - half_span),
+            (self.x_km + half_span, self.y_km + half_span),
+            (self.x_km - half_span, self.y_km + half_span)
         ]
         
         # Get the actual density from the ocean map
@@ -153,9 +153,9 @@ class CatchingSystem(Actor):
             closest_distance = float('inf')
             closest_density = 0.0
             
-            for lat, long, density in self.historical_data:
-                dx = self.lat - lat
-                dy = self.long - long
+            for x, y, density in self.historical_data:
+                dx = self.x_km - x
+                dy = self.y_km - y
                 distance = math.sqrt(dx*dx + dy*dy)
                 
                 if distance < closest_distance:
@@ -182,8 +182,8 @@ class CatchingSystem(Actor):
             bool: True if the drone is within range, False otherwise
         """
         # Simple Euclidean distance check
-        dx = self.lat - drone.lat
-        dy = self.long - drone.long
+        dx = self.x_km - drone.x_km
+        dy = self.y_km - drone.y_km
         distance = (dx**2 + dy**2)**0.5
         return distance <= max_range
         
@@ -197,7 +197,7 @@ class CatchingSystem(Actor):
         for drone in drones:
             if drone.particle_data is not None:
                 # Store the position and plastic density data
-                self.historical_data.append((drone.lat, drone.long, drone.particle_data))
+                self.historical_data.append((drone.x_km, drone.y_km, drone.particle_data))
                 
         # Limit the size of historical data to prevent memory issues
         max_history = 1000
@@ -219,10 +219,10 @@ class CatchingSystem(Actor):
         grid = {}
         
         # Aggregate historical data into grid cells
-        for lat, long, density in self.historical_data:
-            # Convert position to grid cell
-            grid_x = int(lat / grid_size)
-            grid_y = int(long / grid_size)
+        for x, y, density in self.historical_data:
+            # Convert x/y to grid coordinates
+            grid_x = int(x / grid_size)
+            grid_y = int(y / grid_size)
             key = (grid_x, grid_y)
             
             # Update grid cell with plastic density data
@@ -247,13 +247,13 @@ class CatchingSystem(Actor):
         max_turn_rad = math.radians(max_turn_angle_50_steps)
         
         for (grid_x, grid_y), density in grid.items():
-            # Convert grid cell to lat/long coordinates (center of the cell)
-            cell_lat = (grid_x + 0.5) * grid_size
-            cell_long = (grid_y + 0.5) * grid_size
+            # Convert grid cell to x/y coordinates (center of the cell)
+            cell_x = (grid_x + 0.5) * grid_size
+            cell_y = (grid_y + 0.5) * grid_size
             
             # Calculate vector from current position to grid cell
-            dx = cell_lat - self.lat
-            dy = cell_long - self.long
+            dx = cell_x - self.x_km
+            dy = cell_y - self.y_km
             distance = math.sqrt(dx*dx + dy*dy)
             
             if distance < 0.1:  # Skip cells that are too close
@@ -292,17 +292,17 @@ class CatchingSystem(Actor):
             # Calculate final score (plastic density is most important, but direction matters)
             final_score = density * (0.7 * direction_score + 0.3 * distance_score)
             
-            scored_cells.append(((grid_x, grid_y), final_score, (cell_lat, cell_long)))
+            scored_cells.append(((grid_x, grid_y), final_score, (cell_x, cell_y)))
         
         if not scored_cells:  # No valid cells found
             return
         
         # Find the cell with the highest score
         best_cell = max(scored_cells, key=lambda x: x[1])
-        target_lat, target_long = best_cell[2]  # Get the lat/long coordinates
+        target_x, target_y = best_cell[2]  # Get the x/y coordinates
         
         # Set the target position
-        self.target_position = (target_lat, target_long)
+        self.target_position = (target_x, target_y)
     
     def _move_toward_target(self):
         """
@@ -314,21 +314,21 @@ class CatchingSystem(Actor):
             # If no target, create a default one to keep moving
             self._set_default_target()
             
-        target_lat, target_long = self.target_position
+        target_x, target_y = self.target_position
         
         # Calculate direction to target
-        dx = target_lat - self.lat
-        dy = target_long - self.long
+        dx = target_x - self.x_km
+        dy = target_y - self.y_km
         distance = (dx**2 + dy**2)**0.5
         
         # If we're close to the target, select a new one
         if distance < 0.5:  # Increased threshold to prevent frequent target changes
             self._select_new_target()
-            target_lat, target_long = self.target_position
+            target_x, target_y = self.target_position
             
             # Recalculate direction to new target
-            dx = target_lat - self.lat
-            dy = target_long - self.long
+            dx = target_x - self.x_km
+            dy = target_y - self.y_km
             distance = (dx**2 + dy**2)**0.5
         
         # Calculate target heading in degrees
@@ -348,8 +348,8 @@ class CatchingSystem(Actor):
         move_angle_rad = math.radians(self.heading - 90)  # Convert to radians and adjust for coordinate system
         
         # Update position
-        self.lat += move_distance * math.cos(move_angle_rad)
-        self.long += move_distance * math.sin(move_angle_rad)
+        self.x_km += move_distance * math.cos(move_angle_rad)
+        self.y_km += move_distance * math.sin(move_angle_rad)
         
     def _select_new_target(self):
         """
@@ -374,11 +374,11 @@ class CatchingSystem(Actor):
         
         # Set target 10 units away in current direction
         target_distance = 10.0
-        target_lat = self.lat + target_distance * math.cos(move_angle_rad)
-        target_long = self.long + target_distance * math.sin(move_angle_rad)
+        target_x = self.x_km + target_distance * math.cos(move_angle_rad)
+        target_y = self.y_km + target_distance * math.sin(move_angle_rad)
         
         # Ensure target stays within map boundaries (assuming 0-100 range)
-        target_lat = max(0.0, min(100.0, target_lat))
-        target_long = max(0.0, min(100.0, target_long))
+        target_x = max(0.0, min(100.0, target_x))
+        target_y = max(0.0, min(100.0, target_y))
         
-        self.target_position = (target_lat, target_long)
+        self.target_position = (target_x, target_y)

@@ -4,16 +4,16 @@ class Drone(Actor):
     """
     Base class for all drone objects in the simulation.
     """
-    def __init__(self, lat=0.0, long=0.0, scan_radius=1.0):
+    def __init__(self, x_km=0.0, y_km=0.0, scan_radius=1.0):
         """
         Initialize a Drone with position and scanning capabilities.
         
         Args:
-            lat (float): Latitude position
-            long (float): Longitude position
-            scan_radius (float): Radius of the drone's scanning area
+            x_km (float): X position in kilometers from the left edge
+            y_km (float): Y position in kilometers from the bottom edge
+            scan_radius (float): Radius of the drone's scanning area in kilometers
         """
-        super().__init__(lat, long)
+        super().__init__(x_km, y_km)
         self.scan_radius = scan_radius
         self.particle_data = None
         
@@ -45,13 +45,14 @@ class Drone(Actor):
         Create a polygon representing the drone's scan area.
         
         Returns:
-            list: List of (lat, long) points representing the scan polygon
+            list: List of (x, y) points representing the scan polygon
         """
         # Simple implementation - just return a bounding box
-        # In a real implementation, this could be a more complex shape
-        return [
-            (self.lat - self.scan_radius, self.long - self.scan_radius),
-            (self.lat + self.scan_radius, self.long - self.scan_radius),
-            (self.lat + self.scan_radius, self.long + self.scan_radius),
-            (self.lat - self.scan_radius, self.long + self.scan_radius)
+        # Create a simple polygon around the drone's current position
+        polygon = [
+            (self.x_km - self.scan_radius, self.y_km - self.scan_radius),
+            (self.x_km + self.scan_radius, self.y_km - self.scan_radius),
+            (self.x_km + self.scan_radius, self.y_km + self.scan_radius),
+            (self.x_km - self.scan_radius, self.y_km + self.scan_radius)
         ]
+        return polygon

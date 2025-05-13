@@ -22,10 +22,10 @@ class SimulationEngine:
         }
         
         # Track drone positions and trajectories for visualization
-        self.drone_trajectories = {i: [(drone.long, drone.lat)] for i, drone in enumerate(drones)}
+        self.drone_trajectories = {i: [(drone.x_km, drone.y_km)] for i, drone in enumerate(drones)}
         
         # Track catching system trajectory
-        self.catching_system_trajectory = [(catching_system.long, catching_system.lat)]
+        self.catching_system_trajectory = [(catching_system.x_km, catching_system.y_km)]
         
         # Track time series data for plotting
         self.time_series_data = {
@@ -66,7 +66,7 @@ class SimulationEngine:
                 drone_densities[i] = 0.0
                 
             # Track drone position for trajectory visualization
-            self.drone_trajectories[i].append((drone.long, drone.lat))
+            self.drone_trajectories[i].append((drone.x_km, drone.y_km))
                 
         # Update the catching system
         # Pass all drones and the ocean map to the system's step method
@@ -78,16 +78,16 @@ class SimulationEngine:
             # The amount is normalized to a 0-1 scale for the density map
             normalized_amount = min(1.0, particles_processed / 50.0)  # 50.0 is the typical capacity
             self.ocean_map.process_particles_at_location(
-                self.catching_system.lat, 
-                self.catching_system.long, 
+                self.catching_system.x_km, 
+                self.catching_system.y_km, 
                 normalized_amount
             )
         
         # Update the catching system trajectory
-        self.catching_system_trajectory.append((self.catching_system.long, self.catching_system.lat))
+        self.catching_system_trajectory.append((self.catching_system.x_km, self.catching_system.y_km))
         
         # Get the current density at the system's location
-        system_density = self._get_density_at_location(self.catching_system.lat, self.catching_system.long)
+        system_density = self._get_density_at_location(self.catching_system.x_km, self.catching_system.y_km)
         
         # Update time series data
         self.time_series_data['steps'].append(self.current_step)
@@ -133,23 +133,23 @@ class SimulationEngine:
             
         return self.stats
         
-    def _get_density_at_location(self, lat, long):
+    def _get_density_at_location(self, x_km, y_km):
         """
         Get the particle density at a specific location.
         
         Args:
-            lat (float): Latitude position
-            long (float): Longitude position
+            x_km (float): X position in kilometers from the left edge
+            y_km (float): Y position in kilometers from the bottom edge
             
         Returns:
-            float: Particle density at the specified location
+            float: Particle density at the location (0.0 to 1.0)
         """
-        # Create a simple polygon around the point
+        # Create a simple polygon around the position
         polygon = [
-            (lat - 0.5, long - 0.5),
-            (lat + 0.5, long - 0.5),
-            (lat + 0.5, long + 0.5),
-            (lat - 0.5, long + 0.5)
+            (x_km - 0.5, y_km - 0.5),
+            (x_km + 0.5, y_km - 0.5),
+            (x_km + 0.5, y_km + 0.5),
+            (x_km - 0.5, y_km + 0.5)
         ]
         
         # Get the density from the ocean map
