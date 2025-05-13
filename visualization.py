@@ -9,20 +9,33 @@ class SimulationVisualizer:
     """
     Handles visualization and animation of the simulation.
     """
-    def __init__(self, ocean_map, drones, catching_system, output_dir="output", simulation_engine=None):
+    def __init__(self, ocean_map, drones, catching_systems, output_dir="output", simulation_engine=None):
         """
         Initialize the visualizer.
         
         Args:
             ocean_map (OceanMap): The ocean map for the simulation
             drones (list): List of Drone objects
-            catching_system (CatchingSystem): The catching system
+            catching_systems (list or CatchingSystem): The catching system(s) - can be a single system or a list
             output_dir (str): Directory to save output files
             simulation_engine (SimulationEngine, optional): The simulation engine for trajectory data
         """
         self.ocean_map = ocean_map
         self.drones = drones
-        self.catching_system = catching_system
+        
+        # Handle either a single catching system or a list of systems
+        if not isinstance(catching_systems, list):
+            self.catching_systems = [catching_systems]
+        else:
+            self.catching_systems = catching_systems
+            
+        # For backward compatibility
+        self.catching_system = self.catching_systems[0] if self.catching_systems else None
+        
+        # Define colors for different catching systems - to be used consistently across all plots
+        # Order: drone, random, optimal, etc.
+        self.system_colors = ['blue', 'red', 'green', 'purple', 'orange']
+        
         self.output_dir = output_dir
         self.frames = []
         self.simulation_engine = simulation_engine
@@ -209,7 +222,7 @@ class SimulationVisualizer:
     
     def _plot_time_series(self, ax, current_step):
         """
-        Plot time series data showing particle densities and catching system performance.
+        Plot time series data showing cumulative caught particles for both catching systems.
         
         Args:
             ax (matplotlib.axes.Axes): Axes to plot on
@@ -225,9 +238,9 @@ class SimulationVisualizer:
             return
             
         # Set up the plot
-        ax.set_title("Particle Density and Collection Over Time")
+        ax.set_title("Cumulative Particles Caught by System Type")
         ax.set_xlabel("Simulation Step")
-        ax.set_ylabel("Particle Density / Collection")
+        ax.set_ylabel("Cumulative Particles Caught")
         
         # Get the x-axis data (steps)
         steps = time_data['steps']
@@ -236,40 +249,34 @@ class SimulationVisualizer:
         # Set x-axis limits with some padding for future steps
         ax.set_xlim(0, max_step + 5)
         
-        # Plot cumulative caught particles (on a separate y-axis if values are very different)
-        if time_data['cumulative_caught'] and max(time_data['cumulative_caught']) > 10:
-            ax2 = ax.twinx()
-            cumulative_line = ax2.plot(range(len(time_data['cumulative_caught'])), 
-                                     time_data['cumulative_caught'], 
-                                     'k-', linewidth=2, label="Cumulative Caught")
-            ax2.set_ylabel("Cumulative Particles Caught")
-            ax2.set_ylim(bottom=0)
-        else:
-            cumulative_line = ax.plot(range(len(time_data['cumulative_caught'])), 
-                                    time_data['cumulative_caught'], 
-                                    'k-', linewidth=2, label="Cumulative Caught")
+        # Plot cumulative caught particles for each system
+        system_lines = []
+        system_labels = []
         
-        # Plot current caught particles
-        current_line = ax.plot(steps, time_data['current_caught'], 
-                              'k--', linewidth=1.5, label="Current Caught")
+        # Use the same colors defined in the class initialization for consistency
+        system_strategies = []
         
-        # Plot system density
-        system_line = ax.plot(steps, time_data['system_density'], 
-                             'y-', linewidth=1.5, label="System Density")
+        # Get strategy names for labels
+        for i, system in enumerate(self.catching_systems):
+            if hasattr(system, 'strategy'):
+                system_strategies.append(system.strategy)
+            else:
+                system_strategies.append(f"System {i+1}")
         
-        # Plot drone densities
-        drone_lines = []
-        colors = ['r', 'g', 'b', 'purple', 'orange']
-        linestyles = ['-', '--', '-.', ':']
-        
-        for i, densities in time_data['drone_densities'].items():
-            if len(densities) > 0:
-                color = colors[i % len(colors)]
-                style = linestyles[i % len(linestyles)]
-                line = ax.plot(steps, densities, 
-                              color=color, linestyle=style, linewidth=1.5, 
-                              label=f"Drone {i+1} Density")
-                drone_lines.append(line)
+        # Plot each system's cumulative caught particles
+        for i, cumulative in time_data['system_cumulative_caught'].items():
+            if len(cumulative) > 1:  # Need at least two points to plot a line
+                color = self.system_colors[i % len(self.system_colors)]
+                strategy = system_strategies[i]
+                
+                # Plot the cumulative caught line
+                x_values = range(len(cumulative))
+                line = ax.plot(x_values, cumulative, 
+                              color=color, linestyle='-', linewidth=2.5, 
+                              label=f"{strategy.capitalize()} Strategy")
+                
+                system_lines.append(line)
+                system_labels.append(f"{strategy.capitalize()} Strategy")
         
         # Add grid and legend
         ax.grid(True, linestyle='--', alpha=0.7)
@@ -278,90 +285,96 @@ class SimulationVisualizer:
         all_lines = []
         all_labels = []
         
-        # Add cumulative line to legend
-        if 'ax2' in locals():
-            all_lines.extend(cumulative_line)
-            all_labels.append("Cumulative Caught")
-            
-        all_lines.extend(current_line)
-        all_labels.append("Current Caught")
-        
-        all_lines.extend(system_line)
-        all_labels.append("System Density")
-        
-        for i, line in enumerate(drone_lines):
+        for i, line in enumerate(system_lines):
             all_lines.extend(line)
-            all_labels.append(f"Drone {i+1} Density")
+            all_labels.append(system_labels[i])
         
         # Create legend
-        ax.legend(all_lines, all_labels, loc='upper left')
+        if all_lines:
+            ax.legend(all_lines, all_labels, loc='upper left')
         
         # Set y-axis to start at 0
         ax.set_ylim(bottom=0)
     
     def _plot_catching_system(self, ax):
         """
-        Plot the catching system, its heading, and target position.
+        Plot the catching systems, their headings, and trajectories.
         
         Args:
             ax (matplotlib.axes.Axes): Axes to plot on
         """
-        # Plot catching system position
-        ax.scatter(self.catching_system.x_km, self.catching_system.y_km, 
-                  color='black', s=200, marker='s', 
-                  edgecolors='yellow', linewidths=2, label="Catching System")
-        
-        # Plot catching system range - 900 meters (0.9 km)
-        range_circle = patches.Circle((self.catching_system.x_km, self.catching_system.y_km), 
-                                     radius=0.9, fill=False, 
-                                     color='yellow', linestyle='-.')
-        ax.add_patch(range_circle)
-        
-        # Plot movement direction based on recent trajectory
-        if self.simulation_engine and hasattr(self.simulation_engine, 'catching_system_trajectory'):
-            trajectory = self.simulation_engine.catching_system_trajectory
-            if len(trajectory) >= 2:
-                # Calculate direction from the last two positions
-                last_pos = trajectory[-1]
-                prev_pos = trajectory[-2]
-                
-                # Calculate direction vector
-                dx = last_pos[0] - prev_pos[0]  # Change in x_km
-                dy = last_pos[1] - prev_pos[1]  # Change in y_km
-                
-                # Only draw if there's actual movement
-                if dx != 0 or dy != 0:
-                    # Normalize and scale the vector
-                    magnitude = np.sqrt(dx*dx + dy*dy)
-                    if magnitude > 0:
-                        arrow_length = 10.0
-                        dx = arrow_length * dx / magnitude
-                        dy = arrow_length * dy / magnitude
-                        
-                        # Draw an arrow indicating the movement direction
-                        ax.arrow(self.catching_system.x_km, self.catching_system.y_km, 
-                                dx, dy, head_width=3, head_length=3, 
-                                fc='yellow', ec='black', linewidth=2)
-        
-        # Fallback to heading attribute if trajectory not available
-        elif hasattr(self.catching_system, 'heading'):
-            # Convert heading to radians (0 = North, 90 = East)
-            heading_rad = np.radians(self.catching_system.heading - 90)  # Adjust for coordinate system
-            arrow_length = 10.0
-            dx = arrow_length * np.cos(heading_rad)
-            dy = arrow_length * np.sin(heading_rad)
+        # Plot each catching system with a different color
+        for i, system in enumerate(self.catching_systems):
+            # Select color for this system
+            color_idx = i % len(self.system_colors)
+            main_color = self.system_colors[color_idx]
+            edge_color = 'yellow' if main_color != 'yellow' else 'white'
             
-            # Draw an arrow indicating the heading
-            ax.arrow(self.catching_system.x_km, self.catching_system.y_km, 
-                    dx, dy, head_width=3, head_length=3, 
-                    fc='yellow', ec='black', linewidth=2)
-        
-        # Target position visualization removed
-        
-        # Plot catching system trajectory if available from simulation engine
-        if self.simulation_engine and hasattr(self.simulation_engine, 'catching_system_trajectory'):
-            trajectory = self.simulation_engine.catching_system_trajectory
-            if len(trajectory) > 1:
-                traj_x, traj_y = zip(*trajectory)
-                ax.plot(traj_x, traj_y, color='yellow', linestyle='-', alpha=0.7, 
-                        linewidth=2, label="Catching System Path")
+            # Create a label with strategy if available
+            label = f"System ({system.strategy})" if hasattr(system, 'strategy') else f"System {i+1}"
+            
+            # Plot catching system position
+            ax.scatter(system.x_km, system.y_km, 
+                      color=main_color, s=200, marker='s', 
+                      edgecolors=edge_color, linewidths=2, label=label)
+            
+            # Plot catching system range - 900 meters (0.9 km)
+            range_circle = patches.Circle((system.x_km, system.y_km), 
+                                         radius=0.9, fill=False, 
+                                         color=edge_color, linestyle='-.')
+            ax.add_patch(range_circle)
+            
+            # Plot movement direction based on trajectory or heading
+            if self.simulation_engine and hasattr(self.simulation_engine, f'catching_system_{i}_trajectory'):
+                trajectory = getattr(self.simulation_engine, f'catching_system_{i}_trajectory')
+                if len(trajectory) >= 2:
+                    # Calculate direction from the last two positions
+                    last_pos = trajectory[-1]
+                    prev_pos = trajectory[-2]
+                    
+                    # Calculate direction vector
+                    dx = last_pos[0] - prev_pos[0]  # Change in x_km
+                    dy = last_pos[1] - prev_pos[1]  # Change in y_km
+                    
+                    # Only draw if there's actual movement
+                    if dx != 0 or dy != 0:
+                        # Normalize and scale the vector
+                        magnitude = np.sqrt(dx*dx + dy*dy)
+                        if magnitude > 0:
+                            arrow_length = 10.0
+                            dx = arrow_length * dx / magnitude
+                            dy = arrow_length * dy / magnitude
+                            
+                            # Draw an arrow indicating the movement direction
+                            ax.arrow(system.x_km, system.y_km, 
+                                    dx, dy, head_width=3, head_length=3, 
+                                    fc=edge_color, ec=main_color, linewidth=2)
+            
+            # Fallback to heading attribute if trajectory not available
+            elif hasattr(system, 'heading'):
+                # Convert heading to radians (0 = North, 90 = East)
+                heading_rad = np.radians(system.heading - 90)  # Adjust for coordinate system
+                arrow_length = 10.0
+                dx = arrow_length * np.cos(heading_rad)
+                dy = arrow_length * np.sin(heading_rad)
+                
+                # Draw an arrow indicating the heading
+                ax.arrow(system.x_km, system.y_km, 
+                        dx, dy, head_width=3, head_length=3, 
+                        fc=edge_color, ec=main_color, linewidth=2)
+            
+            # Plot catching system trajectory if available
+            if self.simulation_engine:
+                # Check for system-specific trajectory
+                if hasattr(self.simulation_engine, f'catching_system_{i}_trajectory'):
+                    trajectory = getattr(self.simulation_engine, f'catching_system_{i}_trajectory')
+                # Fall back to main trajectory for the first system (backward compatibility)
+                elif i == 0 and hasattr(self.simulation_engine, 'catching_system_trajectory'):
+                    trajectory = self.simulation_engine.catching_system_trajectory
+                else:
+                    trajectory = None
+                    
+                if trajectory and len(trajectory) > 1:
+                    traj_x, traj_y = zip(*trajectory)
+                    ax.plot(traj_x, traj_y, color=main_color, linestyle='-', alpha=0.7, 
+                            linewidth=2, label=f"{label} Path")
