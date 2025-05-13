@@ -2,7 +2,7 @@ class SimulationEngine:
     """
     Main simulation engine that coordinates all actors and runs the simulation.
     """
-    def __init__(self, ocean_map, drones, catching_system):
+    def __init__(self, ocean_map, drones, catching_system, time_step_seconds=300.0):
         """
         Initialize the simulation engine with all necessary components.
         
@@ -35,6 +35,9 @@ class SimulationEngine:
             'drone_densities': {i: [] for i in range(len(drones))},  # Particle density for each drone
             'system_density': []       # Current particle density at system location
         }
+
+        self.time_step_seconds = time_step_seconds  # Time step in seconds
+        self.elapsed_time_in_seconds = 0.0  # Simulation time in seconds
         
     def step(self):
         """
@@ -43,6 +46,9 @@ class SimulationEngine:
         Returns:
             dict: Statistics for this step
         """
+
+        # Update elapsed time
+        self.elapsed_time_in_seconds += self.time_step_seconds
         # Update the ocean map
         self.ocean_map.step()
         
