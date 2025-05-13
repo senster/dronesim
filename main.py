@@ -15,15 +15,17 @@ import os
 import datetime
 import sys
 import argparse
+import math
 from ocean_map import OceanMap
 from lawnmower_drone import LawnmowerDrone
 from circular_drone import CircularDrone
+from ai_drone import AIDrone
 from catching_system import CatchingSystem
 from simulation_engine import SimulationEngine
 from visualization import SimulationVisualizer
 from strategy_manager import StrategyManager
 
-def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None):
+def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None, num_steps=200):
     """
     Run a simulation using lawnmower pattern drones.
     
@@ -83,9 +85,82 @@ def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None):
     # Add seed to pattern parameters
     pattern_params["seed"] = ocean.seed
             
-    return run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params)
+    return run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params, num_steps)
 
-def run_circular_simulation(output_dir, seed=None):
+def run_ai_simulation(output_dir, seed=None, num_drones=4, num_steps=200):
+    """
+    Run a simulation using AI drones with dynamic path planning.
+    
+    Args:
+        output_dir (str): Directory to save output files
+        seed (int, optional): Random seed for reproducible particle dispersion
+        num_drones (int, optional): Number of drones to use in the simulation
+        
+    Returns:
+        tuple: (final_stats, gif_path)
+    """
+    # Create the ocean map with optional seed
+    ocean = OceanMap(width=100.0, height=100.0, particle_density=0.5, seed=seed)
+    
+    # Create the catching system in the center of the map
+    system_x = 50.0
+    system_y = 50.0
+    system = CatchingSystem(x_km=system_x, y_km=system_y)
+    
+    # Create a fleet of AI drones with dynamic path planning
+    drones = []
+    
+    # Calculate starting positions distributed around the catching system
+    # This helps drones start in different areas to avoid initial overlap
+    for i in range(num_drones):
+        # Calculate angle for this drone (evenly distributed around a circle)
+        angle = 2 * math.pi * i / num_drones
+        
+        # Calculate starting position (10 units away from center)
+        start_offset = 10.0
+        start_x = system_x + start_offset * math.cos(angle)
+        start_y = system_y + start_offset * math.sin(angle)
+        
+        # Ensure within boundaries
+        start_x = max(0.0, min(100.0, start_x))
+        start_y = max(0.0, min(100.0, start_y))
+        
+        # Create drone with unique ID and initial heading toward its assigned sector
+        drone = AIDrone(
+            x_km=start_x, 
+            y_km=start_y, 
+            scan_radius=0.3, 
+            min_x=0.0, 
+            max_x=100.0, 
+            min_y=0.0, 
+            max_y=100.0,
+            step_size=2.0,  # Increased step size for faster exploration
+            drone_id=i
+        )
+        
+        # Set initial heading toward the drone's preferred sector
+        sector = i % 4  # 0=SW, 1=SE, 2=NW, 3=NE
+        if sector == 0:  # Southwest
+            drone.current_heading = 5 * math.pi / 4  # 225 degrees
+        elif sector == 1:  # Southeast
+            drone.current_heading = 7 * math.pi / 4  # 315 degrees
+        elif sector == 2:  # Northwest
+            drone.current_heading = 3 * math.pi / 4  # 135 degrees
+        else:  # Northeast
+            drone.current_heading = math.pi / 4  # 45 degrees
+        
+        drones.append(drone)
+    
+    # Add seed and drone count to pattern parameters
+    pattern_name = "ai"
+    pattern_params = {
+        "seed": ocean.seed,
+        "num_drones": num_drones
+    }
+            
+    return run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params, num_steps)
+
+def run_circular_simulation(output_dir, seed=None, num_steps=200):
     """
     Run a simulation using circular pattern drones.
     
@@ -141,9 +216,9 @@ def run_circular_simulation(output_dir, seed=None):
     
     # Add seed to pattern parameters
     pattern_params = {"seed": ocean.seed}
-    return run_simulation(ocean, drones, system, output_dir, "circular", pattern_params)
+    return run_simulation(ocean, drones, system, output_dir, "circular", pattern_params, num_steps)
 
-def run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params={}):
+def run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params={}, num_steps=200):
     """
     Run a simulation with the given components.
     
@@ -152,8 +227,9 @@ def run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_para
         drones (list): List of drone objects
         system (CatchingSystem): The catching system
         output_dir (str): Directory to save output files
-        pattern_name (str): Name of the drone pattern for the output filename
+        pattern_name (str): Name of the drone pattern for filename
         pattern_params (dict): Additional parameters to include in the filename
+        num_steps (int): Number of simulation steps to run
         
     Returns:
         tuple: (final_stats, gif_path)
@@ -164,11 +240,8 @@ def run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_para
     # Create the visualizer and pass the simulation engine for trajectory tracking
     visualizer = SimulationVisualizer(ocean, drones, system, output_dir=output_dir, simulation_engine=simulation)
     
-    # Number of steps to run
-    num_steps = 200  # Increased to see longer simulation behavior
-    
     # Run the simulation
-    print(f"Starting simulation with {pattern_name} pattern drones...")
+    print(f"Starting simulation with {pattern_name} pattern drones for {num_steps} steps...")
     for i in range(num_steps):
         # Run one simulation step
         stats = simulation.step()
@@ -238,11 +311,13 @@ def main():
     
     # Set up argument parser
     parser = argparse.ArgumentParser(description="Drone Simulation")
-    parser.add_argument("pattern", nargs="?", choices=["circular", "lawnmower"], default="lawnmower",
+    parser.add_argument("pattern", nargs="?", choices=["circular", "lawnmower", "ai"], default="lawnmower",
                         help="Drone flight pattern (default: lawnmower)")
     parser.add_argument("--strategy", "-s", help="Scanning strategy for lawnmower pattern")
     parser.add_argument("--list-strategies", "-l", action="store_true", help="List available scanning strategies")
     parser.add_argument("--seed", type=int, help="Random seed for reproducible particle dispersion")
+    parser.add_argument("--num-drones", "-n", type=int, default=4, help="Number of drones to use (default: 4, only applicable for AI pattern)")
+    parser.add_argument("--steps", type=int, default=200, help="Number of simulation steps to run (default: 200)")
     
     args = parser.parse_args()
     
@@ -255,9 +330,14 @@ def main():
     if args.pattern == "circular":
         if args.strategy:
             print("Note: Strategy selection is only applicable for lawnmower pattern")
-        run_circular_simulation(output_dir, args.seed)
+        run_circular_simulation(output_dir, args.seed, args.steps)
+    elif args.pattern == "ai":
+        if args.strategy:
+            print("Note: Strategy selection is only applicable for lawnmower pattern")
+        print(f"Running AI simulation with {args.num_drones} drones for {args.steps} steps...")
+        run_ai_simulation(output_dir, args.seed, args.num_drones, args.steps)
     else:
-        run_lawnmower_simulation(output_dir, args.strategy, args.seed)
+        run_lawnmower_simulation(output_dir, args.strategy, args.seed, args.steps)
 
 if __name__ == "__main__":
     main()

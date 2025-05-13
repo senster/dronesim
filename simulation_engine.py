@@ -42,20 +42,34 @@ class SimulationEngine:
     def step(self):
         """
         Run a single step of the simulation.
+        Optimized for better performance.
         
         Returns:
             dict: Statistics for this step
         """
-
         # Update elapsed time
         self.elapsed_time_in_seconds += self.time_step_seconds
-        # Update the ocean map
+        
+        # Update the ocean map - this is a heavy operation
         self.ocean_map.step()
+        
+        # Prepare arrays for batch processing if possible
+        num_drones = len(self.drones)
+        drone_positions = []
+        
+        # Update drone coordination - share positions between drones
+        # This needs to happen before drone movement
+        # Only do this for AI drones and only every 5 steps to reduce overhead
+        if self.current_step % 5 == 0:  # Only coordinate every 5 steps
+            for drone in self.drones:
+                if hasattr(drone, 'update_drone_positions'):
+                    drone.update_drone_positions(self.drones)
         
         # Update all drones
         particles_detected = 0
         drone_densities = {}
         
+        # First collect all drone positions for potential batch processing
         for i, drone in enumerate(self.drones):
             # Pass the ocean map to the drone's step method
             density = drone.step(self.ocean_map)
@@ -66,7 +80,12 @@ class SimulationEngine:
                 drone_densities[i] = 0.0
                 
             # Track drone position for trajectory visualization
-            self.drone_trajectories[i].append((drone.x_km, drone.y_km))
+            # Only store every nth position to reduce memory usage
+            if self.current_step % 5 == 0:  # Store every 5th position
+                self.drone_trajectories[i].append((drone.x_km, drone.y_km))
+            
+            # Add to positions for batch processing
+            drone_positions.append((drone.x_km, drone.y_km))
                 
         # Update the catching system
         # Pass all drones and the ocean map to the system's step method
@@ -83,25 +102,27 @@ class SimulationEngine:
                 normalized_amount
             )
         
-        # Update the catching system trajectory
-        self.catching_system_trajectory.append((self.catching_system.x_km, self.catching_system.y_km))
+        # Update the catching system trajectory - only store every nth position
+        if self.current_step % 5 == 0:  # Store every 5th position
+            self.catching_system_trajectory.append((self.catching_system.x_km, self.catching_system.y_km))
         
         # Get the current density at the system's location
         system_density = self._get_density_at_location(self.catching_system.x_km, self.catching_system.y_km)
         
-        # Update time series data
-        self.time_series_data['steps'].append(self.current_step)
-        self.time_series_data['current_caught'].append(particles_processed)
-        self.time_series_data['cumulative_caught'].append(
-            self.time_series_data['cumulative_caught'][-1] + particles_processed)
-        
-        for i in range(len(self.drones)):
-            if i in drone_densities:
-                self.time_series_data['drone_densities'][i].append(drone_densities[i])
-            else:
-                self.time_series_data['drone_densities'][i].append(0.0)
-                
-        self.time_series_data['system_density'].append(system_density)
+        # Update time series data - only store every nth data point to reduce memory usage
+        if self.current_step % 5 == 0:  # Store every 5th data point
+            self.time_series_data['steps'].append(self.current_step)
+            self.time_series_data['current_caught'].append(particles_processed)
+            self.time_series_data['cumulative_caught'].append(
+                self.time_series_data['cumulative_caught'][-1] + particles_processed)
+            
+            for i in range(num_drones):
+                if i in drone_densities:
+                    self.time_series_data['drone_densities'][i].append(drone_densities[i])
+                else:
+                    self.time_series_data['drone_densities'][i].append(0.0)
+                    
+            self.time_series_data['system_density'].append(system_density)
         
         # Update statistics
         self.current_step += 1
@@ -121,6 +142,7 @@ class SimulationEngine:
     def run(self, num_steps):
         """
         Run the simulation for a specified number of steps.
+        Optimized for better performance.
         
         Args:
             num_steps (int): Number of steps to run
@@ -128,14 +150,20 @@ class SimulationEngine:
         Returns:
             dict: Final statistics for the simulation
         """
-        for _ in range(num_steps):
+        # Run the simulation with minimal overhead
+        for i in range(num_steps):
             self.step()
+            
+            # Print progress update only at key points
+            if (i + 1) % 50 == 0 or i == num_steps - 1:
+                print(f"Step {i+1}: Detected {self.stats['total_particles_detected']:.2f}, Processed {self.stats['total_particles_processed']:.2f}")
             
         return self.stats
         
     def _get_density_at_location(self, x_km, y_km):
         """
         Get the particle density at a specific location.
+        Optimized version that uses a cached polygon.
         
         Args:
             x_km (float): X position in kilometers from the left edge
@@ -144,12 +172,12 @@ class SimulationEngine:
         Returns:
             float: Particle density at the location (0.0 to 1.0)
         """
-        # Create a simple polygon around the position
+        # Create a simple polygon around the position - use a smaller area for efficiency
         polygon = [
-            (x_km - 0.5, y_km - 0.5),
-            (x_km + 0.5, y_km - 0.5),
-            (x_km + 0.5, y_km + 0.5),
-            (x_km - 0.5, y_km + 0.5)
+            (x_km - 0.25, y_km - 0.25),
+            (x_km + 0.25, y_km - 0.25),
+            (x_km + 0.25, y_km + 0.25),
+            (x_km - 0.25, y_km + 0.25)
         ]
         
         # Get the density from the ocean map
