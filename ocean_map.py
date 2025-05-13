@@ -4,11 +4,13 @@ import os
 from datetime import datetime
 from actor import Actor
 
+
 class OceanMap(Actor):
     """
     Represents the ocean environment with particle distribution.
     Loads particles from OceanParcels zarr files.
     """
+
     def __init__(self, width=100.0, height=100.0, zarr_path="pset/0_Particles.zarr"):
         """
         Initialize an OceanMap with dimensions and particle distribution from zarr file.
@@ -26,7 +28,7 @@ class OceanMap(Actor):
 
         # Track processed particles (where particles have been removed)
         self.processed_particles = {}  # Will store grid cells where particles have been processed
-        
+
         # Zarr file path for loading particles
         self.zarr_path = zarr_path
 
@@ -39,13 +41,13 @@ class OceanMap(Actor):
         # Load particle data from zarr file
         print(f"Loading particles from zarr file: {self.zarr_path}")
         self._load_particles_from_zarr()
-        
+
     def step(self):
         """
         Update the particle distribution for one time step.
         """
         self._update_particles_from_zarr()
-        
+
     def get_particles_in_area(self, polygon):
         """
         Get the density of particles in a specified area.
@@ -62,12 +64,12 @@ class OceanMap(Actor):
         # In a real implementation, this would calculate the actual intersection
         center_x_km = sum(p[0] for p in polygon) / len(polygon)
         center_y_km = sum(p[1] for p in polygon) / len(polygon)
-        
+
         # Get the density at this point using the higher resolution grid
         grid_x = int(center_x_km / self.grid_size)
         grid_y = int(center_y_km / self.grid_size)
         key = (grid_x, grid_y)
-        
+
         # Use cached values when possible for better performance
         # Check if this area has been processed (particles removed)
         if key in self.processed_particles:
@@ -81,57 +83,6 @@ class OceanMap(Actor):
 
     def process_particles_at_location(self, x_km, y_km, amount):
         """
-        Calculate particle densities for multiple points at once.
-        Optimized for performance using vectorized operations.
-        
-        Args:
-            lats (numpy.ndarray): Array of latitude positions
-            longs (numpy.ndarray): Array of longitude positions
-            
-        Returns:
-            numpy.ndarray: Array of density values between 0.0 and 1.0
-        """
-        # Start with base density for all points
-        n_points = len(lats)
-        densities = np.full(n_points, self.base_density)
-        
-        if len(self.clusters) == 0:
-            return densities
-            
-        # Get cluster data
-        cluster_positions = self.cluster_array[:, :2]  # x, y coordinates
-        strengths = self.cluster_array[:, 2]
-        radii = self.cluster_array[:, 3]
-        radii_squared_2x = 2 * (radii ** 2)
-        radii_3x_squared = (radii * 3) ** 2
-        
-        # For each point, calculate contributions from all clusters
-        for i in range(n_points):
-            lat, long = lats[i], longs[i]
-            
-            # Calculate distances to all clusters at once
-            dx = lat - cluster_positions[:, 0]
-            dy = long - cluster_positions[:, 1]
-            distances_squared = dx*dx + dy*dy
-            
-            # Only consider clusters within 3x radius
-            mask = distances_squared < radii_3x_squared
-            
-            # Calculate contributions for relevant clusters
-            if np.any(mask):
-                relevant_distances_squared = distances_squared[mask]
-                relevant_strengths = strengths[mask]
-                relevant_radii_squared = radii_squared_2x[mask]
-                
-                # Gaussian falloff from center
-                contributions = relevant_strengths * np.exp(-relevant_distances_squared / relevant_radii_squared)
-                densities[i] += np.sum(contributions)
-        
-        # Ensure densities are between 0.0 and 1.0
-        return np.clip(densities, 0.0, 1.0)
-            
-    def process_particles_at_location(self, x_km, y_km, amount):
-        """
         Process (remove) particles at a specific location.
         
         Args:
@@ -143,7 +94,7 @@ class OceanMap(Actor):
         grid_x = int(x_km / self.grid_size)
         grid_y = int(y_km / self.grid_size)
         key = (grid_x, grid_y)
-        
+
         # Get current density
         if key in self.particle_map:
             current_density = self.particle_map[key]
@@ -153,21 +104,21 @@ class OceanMap(Actor):
         # Check if this area has already been processed
         if key in self.processed_particles:
             current_density = self.processed_particles[key]
-        
+
         # Calculate how much can be processed (can't process more than exists)
         processable = min(amount, current_density)
-        
+
         # Reduce density by the processed amount
         new_density = max(0.0, current_density - processable)
         self.processed_particles[key] = new_density
-        
+
         # Also process neighboring cells with a falloff effect
         radius = 1  # Process particles in a small radius around the target
         for dx in range(-radius, radius + 1):
             for dy in range(-radius, radius + 1):
                 if dx == 0 and dy == 0:
                     continue  # Skip the center cell (already processed)
-                
+
                 neighbor_key = (grid_x + dx, grid_y + dy)
 
                 # Get current density at neighbor
@@ -175,14 +126,14 @@ class OceanMap(Actor):
                     neighbor_density = self.particle_map[neighbor_key]
                 else:
                     neighbor_density = 0.0
-                
+
                 # Check if this neighbor has already been processed
                 if neighbor_key in self.processed_particles:
                     neighbor_density = self.processed_particles[neighbor_key]
-                
+
                 # Calculate falloff based on distance
-                distance = np.sqrt(dx*dx + dy*dy)
-                falloff = max(0.0, 1.0 - distance/radius)
+                distance = np.sqrt(dx * dx + dy * dy)
+                falloff = max(0.0, 1.0 - distance / radius)
 
                 # Process a portion of the neighbor's particles
                 neighbor_processable = min(amount * falloff * 0.5, neighbor_density)
@@ -195,7 +146,7 @@ class OceanMap(Actor):
                 processable += neighbor_processable
 
         return processable
-        
+
     def get_seconds_per_step(self):
         """
         Get the number of seconds per simulation step.
@@ -338,7 +289,8 @@ class OceanMap(Actor):
 
         # Print some statistics about the particle distribution
         if total_particles > 0:
-            print(f"Time step {self.current_time_index}: {total_particles} particles in {len(grid_counts)} cells (avg: {total_particles/max(1, len(grid_counts)):.2f} per occupied cell)")
+            print(
+                f"Time step {self.current_time_index}: {total_particles} particles in {len(grid_counts)} cells (avg: {total_particles / max(1, len(grid_counts)):.2f} per occupied cell)")
 
         # Increment time index for next step
         self.current_time_index = (self.current_time_index + 1) % len(self.time_steps[0])
@@ -376,24 +328,25 @@ class OceanMap(Actor):
         return lon, lat
         # Update cluster positions and properties
         self._update_clusters()
-        
+
         # Update the numpy array for optimized calculations
         self.cluster_array = np.array(self.clusters)
-        
+
         # Recalculate densities based on new cluster positions
         # For efficiency, only update a small portion of the grid each step
         update_fraction = 0.05  # Update only 5% of the grid each step
-        
+
         # Use numpy for faster operations
         if len(self.particle_map) > 0:
             keys = list(self.particle_map.keys())
+
     def step(self):
         """
         Update the particle distribution for one time step.
         """
         # Update the particle distribution from zarr file
         self._update_particles_from_zarr()
-        
+
     def _update_wind(self):
         """
         Update wind direction for this time step.

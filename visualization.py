@@ -277,8 +277,6 @@ class SimulationVisualizer:
                         Z[i, j] = self.ocean_map.particle_map[key]
                     else:
                         Z[i, j] = 0.0  # Default to zero density if not in particle map
-        
-                        Z[i, j] = self.ocean_map.base_density
 
         # Plot the heatmap with blue (low density) to red (high density) colormap
         im = ax.pcolormesh(X, Y, Z, cmap='coolwarm', alpha=0.7, vmin=0, vmax=1)
