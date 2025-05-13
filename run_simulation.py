@@ -10,7 +10,7 @@ import subprocess
 python_executable = "./venv/bin/python3"
 
 # Command to run the simulation with the 36_Particles.zarr file
-command = [python_executable, "main.py", "circular", "--zarr", "pset/36_Particles.zarr"]
+command = [python_executable, "main.py", "lawnmower", "--zarr", "pset/36_Particles.zarr"]
 
 # Run the command
 print(f"Running command: {' '.join(command)}")
