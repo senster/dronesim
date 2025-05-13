@@ -23,7 +23,7 @@ from simulation_engine import SimulationEngine
 from visualization import SimulationVisualizer
 from strategy_manager import StrategyManager
 
-def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None):
+def run_lawnmower_simulation(output_dir, strategy_name=None, zarr_path=None):
     """
     Run a simulation using lawnmower pattern drones.
     
@@ -35,8 +35,8 @@ def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None):
     Returns:
         tuple: (final_stats, gif_path)
     """
-    # Create the ocean map with optional seed
-    ocean = OceanMap(width=100.0, height=100.0, particle_density=0.5, seed=seed)
+    # Create the ocean map with zarr path
+    ocean = OceanMap(width=100.0, height=100.0, zarr_path=zarr_path)
     
     # Create the catching system in the center of the map
     system_x = 50.0
@@ -80,12 +80,11 @@ def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None):
         else:
             pattern_params = {"strategy": strategy_name}
     
-    # Add seed to pattern parameters
-    pattern_params["seed"] = ocean.seed
+    # No need to add seed parameter since we're using zarr files
             
     return run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params)
 
-def run_circular_simulation(output_dir, seed=None):
+def run_circular_simulation(output_dir, zarr_path=None):
     """
     Run a simulation using circular pattern drones.
     
@@ -96,8 +95,8 @@ def run_circular_simulation(output_dir, seed=None):
     Returns:
         tuple: (final_stats, gif_path)
     """
-    # Create the ocean map with optional seed
-    ocean = OceanMap(width=100.0, height=100.0, particle_density=0.5, seed=seed)
+    # Create the ocean map with zarr path
+    ocean = OceanMap(width=100.0, height=100.0, zarr_path=zarr_path)
     
     # Create the catching system in the center of the map
     system_x = 50.0
@@ -139,8 +138,8 @@ def run_circular_simulation(output_dir, seed=None):
                      catching_system=system)
     ]
     
-    # Add seed to pattern parameters
-    pattern_params = {"seed": ocean.seed}
+    # Create pattern parameters for the filename
+    pattern_params = {}
     return run_simulation(ocean, drones, system, output_dir, "circular", pattern_params)
 
 def run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params={}):
@@ -242,7 +241,8 @@ def main():
                         help="Drone flight pattern (default: lawnmower)")
     parser.add_argument("--strategy", "-s", help="Scanning strategy for lawnmower pattern")
     parser.add_argument("--list-strategies", "-l", action="store_true", help="List available scanning strategies")
-    parser.add_argument("--seed", type=int, help="Random seed for reproducible particle dispersion")
+    # Seed parameter removed as it's no longer needed with zarr files
+    parser.add_argument("--zarr", "-z", help="Path to OceanParcels zarr file for particle data")
     
     args = parser.parse_args()
     
@@ -255,9 +255,9 @@ def main():
     if args.pattern == "circular":
         if args.strategy:
             print("Note: Strategy selection is only applicable for lawnmower pattern")
-        run_circular_simulation(output_dir, args.seed)
+        run_circular_simulation(output_dir, args.zarr)
     else:
-        run_lawnmower_simulation(output_dir, args.strategy, args.seed)
+        run_lawnmower_simulation(output_dir, args.strategy, args.zarr)
 
 if __name__ == "__main__":
     main()
