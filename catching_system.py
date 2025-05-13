@@ -208,10 +208,8 @@ class CatchingSystem(Actor):
                 # Store the position and plastic density data
                 self.historical_data.append((drone.x_km, drone.y_km, drone.particle_data))
                 
-        # Limit the size of historical data to prevent memory issues
-        max_history = 1000
-        if len(self.historical_data) > max_history:
-            self.historical_data = self.historical_data[-max_history:]
+        # No limit on historical data - retain all data points
+        # This provides more comprehensive coverage for decision making
     
     def _update_movement_target_random(self):
         """Select a random direction and move."""
@@ -234,7 +232,7 @@ class CatchingSystem(Actor):
             return  # No historical data to analyze
             
         # Create a grid of the area and aggregate plastic density data
-        grid_size = 10
+        grid_size = 2  # Reduced from 10km to 2km for finer granularity
         grid = {}
         
         # Aggregate historical data into grid cells
@@ -254,6 +252,7 @@ class CatchingSystem(Actor):
         scored_cells = []
         
         # Current heading in radians (adjusted for coordinate system)
+        # Using consistent adjustment: 0° is East, 90° is North
         current_heading_rad = math.radians(self.heading - 90)
         
         # Unit vector representing current direction
@@ -305,8 +304,8 @@ class CatchingSystem(Actor):
                 direction_score = max(0.05, (dot_product + 1) / 2) * 0.1
             
             # Calculate distance score (prefer closer cells, but not too close)
-            # Optimal distance is around 20-30 grid units
-            distance_score = 1.0 / (1.0 + abs(distance - 25.0) / 25.0)
+            # Optimal distance is around 10-15 km (adjusted for 2km grid size)
+            distance_score = 1.0 / (1.0 + abs(distance - 12.5) / 12.5)
             
             # Calculate final score (plastic density is most important, but direction matters)
             final_score = density * (0.7 * direction_score + 0.3 * distance_score)
@@ -401,9 +400,10 @@ class CatchingSystem(Actor):
             distance = (dx**2 + dy**2)**0.5
         
         # Calculate target heading in degrees
+        # Using consistent adjustment: 0° is East, 90° is North
         target_heading = math.degrees(math.atan2(dy, dx))
-        # Convert to 0-360 range
-        target_heading = (target_heading + 90) % 360
+        # Convert to 0-360 range with consistent -90 adjustment
+        target_heading = (target_heading - 90) % 360
         
         # Determine how much to turn (respecting max turn angle)
         heading_diff = (target_heading - self.heading + 180) % 360 - 180
@@ -414,6 +414,7 @@ class CatchingSystem(Actor):
         
         # Always move at constant speed
         move_distance = self.move_speed
+        # Consistent adjustment: 0° is East, 90° is North
         move_angle_rad = math.radians(self.heading - 90)  # Convert to radians and adjust for coordinate system
         
         # Update position
@@ -439,6 +440,7 @@ class CatchingSystem(Actor):
         to ensure continuous movement for efficient plastic collection.
         """
         # Move in current heading direction
+        # Consistent adjustment: 0° is East, 90° is North
         move_angle_rad = math.radians(self.heading - 90)
         
         # Set target 10 units away in current direction

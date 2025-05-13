@@ -168,6 +168,7 @@ class CircularDrone(Drone):
         """
         if self.catching_system is not None:
             # Get system's heading in radians
+            # Using consistent adjustment: 0° is East, 90° is North
             system_heading_rad = math.radians(self.catching_system.heading - 90)
             
             # Calculate the center point of the circle in front of the system
@@ -176,9 +177,11 @@ class CircularDrone(Drone):
             circle_center_y = self.center_y + self.forward_distance * math.sin(system_heading_rad)
             
             # Calculate new position on the circle
-            self.x_km = circle_center_x + self.circle_radius * math.sin(self.current_angle)
-            self.y_km = circle_center_y + self.circle_radius * math.cos(self.current_angle)
+            # Using consistent coordinate system: sin for y and cos for x
+            self.x_km = circle_center_x + self.circle_radius * math.cos(self.current_angle)
+            self.y_km = circle_center_y + self.circle_radius * math.sin(self.current_angle)
         else:
             # If no system reference, just circle around the center point
-            self.x_km = self.center_x + self.circle_radius * math.sin(self.current_angle)
-            self.y_km = self.center_y + self.circle_radius * math.cos(self.current_angle)
+            # Using consistent coordinate system: sin for y and cos for x
+            self.x_km = self.center_x + self.circle_radius * math.cos(self.current_angle)
+            self.y_km = self.center_y + self.circle_radius * math.sin(self.current_angle)
