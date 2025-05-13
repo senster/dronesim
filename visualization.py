@@ -356,17 +356,7 @@ class SimulationVisualizer:
                     dx, dy, head_width=3, head_length=3, 
                     fc='yellow', ec='black', linewidth=2)
         
-        # Plot target position if available
-        if hasattr(self.catching_system, 'target_position') and self.catching_system.target_position is not None:
-            target_x_km, target_y_km = self.catching_system.target_position  # Corrected order: x, y
-            ax.scatter(target_x_km, target_y_km, 
-                      color='yellow', s=100, marker='*', 
-                      edgecolors='black', linewidths=1, label="Target Position")
-            
-            # Draw a line from current position to target
-            ax.plot([self.catching_system.x_km, target_x_km], 
-                   [self.catching_system.y_km, target_y_km], 
-                   'y--', alpha=0.5)
+        # Target position visualization removed
         
         # Plot catching system trajectory if available from simulation engine
         if self.simulation_engine and hasattr(self.simulation_engine, 'catching_system_trajectory'):
