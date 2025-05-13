@@ -8,13 +8,27 @@ various parameters such as drone type, seed, strategy, and more.
 import os
 import re
 import json
-from flask import Flask, render_template, request, send_from_directory, jsonify
+import subprocess
+import datetime
+import random
+from flask import Flask, render_template, request, send_from_directory, jsonify, redirect, url_for
 from werkzeug.serving import run_simple
 import webbrowser
 import threading
 import time
 
-app = Flask(__name__, template_folder=os.path.dirname(os.path.abspath(__file__)))
+# Import simulation components
+from ocean_map import OceanMap
+from lawnmower_drone import LawnmowerDrone
+from circular_drone import CircularDrone
+from ai_drone import AIDrone
+from catching_system import CatchingSystem
+from simulation_engine import SimulationEngine
+from visualization import SimulationVisualizer
+from strategy_manager import StrategyManager
+
+# Create a Flask application with static file configuration
+app = Flask(__name__, static_folder='static', static_url_path='/static', template_folder=os.path.dirname(os.path.abspath(__file__)))
 
 # Global variables
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
@@ -166,6 +180,98 @@ def get_simulation(filename):
     """Get a specific simulation file."""
     return send_from_directory(OUTPUT_DIR, filename)
 
+
+
+# Global variable to track simulation progress
+SIMULATION_PROGRESS = {"current_step": 0, "total_steps": 0}
+
+@app.route('/api/progress')
+def get_progress():
+    """Get the current simulation progress."""
+    return jsonify(SIMULATION_PROGRESS)
+
+# Custom progress callback function
+def progress_callback(step, total_steps):
+    """Update the simulation progress."""
+    global SIMULATION_PROGRESS
+    SIMULATION_PROGRESS["current_step"] = step
+    SIMULATION_PROGRESS["total_steps"] = total_steps
+
+@app.route('/api/run_simulation', methods=['POST'])
+def run_simulation():
+    """Run a new simulation with the provided parameters."""
+    global SIMULATION_PROGRESS
+    
+    # Reset progress
+    SIMULATION_PROGRESS = {"current_step": 0, "total_steps": 0}
+    
+    # Get simulation parameters
+    pattern = request.form.get('pattern', 'lawnmower')
+    strategy = request.form.get('strategy', None)
+    seed = request.form.get('seed', None)
+    num_drones = int(request.form.get('num_drones', 4))
+    steps = int(request.form.get('steps', 200))
+    
+    # Set total steps for progress tracking
+    SIMULATION_PROGRESS["total_steps"] = steps
+    
+    # Convert empty seed to None or int
+    if seed and seed.strip():
+        seed = int(seed)
+    else:
+        seed = None
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    
+    # Run the simulation based on the pattern
+    result = {}
+    
+    try:
+        # Monkey patch the SimulationEngine.step method to track progress
+        original_step = SimulationEngine.step
+        
+        def step_with_progress(self):
+            stats = original_step(self)
+            progress_callback(self.current_step, SIMULATION_PROGRESS["total_steps"])
+            return stats
+        
+        # Apply the monkey patch
+        SimulationEngine.step = step_with_progress
+        
+        if pattern == "circular":
+            from main import run_circular_simulation
+            stats, gif_path = run_circular_simulation(OUTPUT_DIR, seed, steps)
+            result = {"success": True, "gif_path": os.path.basename(gif_path)}
+        elif pattern == "ai":
+            from main import run_ai_simulation
+            stats, gif_path = run_ai_simulation(OUTPUT_DIR, seed, num_drones, steps)
+            result = {"success": True, "gif_path": os.path.basename(gif_path)}
+        else:  # lawnmower
+            from main import run_lawnmower_simulation
+            stats, gif_path = run_lawnmower_simulation(OUTPUT_DIR, strategy, seed, steps)
+            result = {"success": True, "gif_path": os.path.basename(gif_path)}
+        
+        # Restore the original method
+        SimulationEngine.step = original_step
+        
+        # Reload simulations to include the new one
+        load_simulations()
+        
+    except Exception as e:
+        # Restore the original method in case of exception
+        SimulationEngine.step = original_step if 'original_step' in locals() else SimulationEngine.step
+        result = {"success": False, "error": str(e)}
+    
+    return jsonify(result)
+
+@app.route('/api/strategies')
+def get_strategies():
+    """Get all available scanning strategies."""
+    strategy_manager = StrategyManager()
+    strategies = strategy_manager.get_strategy_names()
+    return jsonify(strategies)
+
 def get_html_template(drone_type_options, seed_options, strategy_options):
     """Generate the HTML template with the provided options."""
     
@@ -188,7 +294,7 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simulation Explorer</title>
+    <title>Drone Explorer</title>
     <style>
         body {{
             font-family: Arial, sans-serif;
@@ -227,7 +333,7 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
             margin-bottom: 5px;
             font-weight: bold;
         }}
-        select {{
+        select, input[type="number"], input[type="text"] {{
             width: 100%;
             padding: 8px;
             border: 1px solid #ddd;
@@ -242,7 +348,7 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
             border-radius: 4px;
             cursor: pointer;
             font-size: 14px;
-            margin-top: 10px;
+            margin-right: 5px;
         }}
         button:hover {{
             background-color: #45a049;
@@ -299,39 +405,170 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
             text-align: center;
             color: #666;
         }}
+        .tabs {{
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+        }}
+        .tab {{
+            padding: 10px 20px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            border-bottom: none;
+            border-radius: 4px 4px 0 0;
+            margin-right: 5px;
+        }}
+        .tab.active {{
+            background-color: #fff;
+            border-color: #ddd;
+            border-bottom-color: #fff;
+            margin-bottom: -1px;
+            font-weight: bold;
+        }}
+        .tab-content {{
+            display: none;
+        }}
+        .tab-content.active {{
+            display: block;
+        }}
+        .form-group {{
+            margin-bottom: 15px;
+        }}
+        .progress-container {{
+            width: 100%;
+            background-color: #f1f1f1;
+            border-radius: 4px;
+            margin-top: 20px;
+            display: none;
+        }}
+        .progress-bar {{
+            width: 0%;
+            height: 20px;
+            background-color: #4CAF50;
+            border-radius: 4px;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+        }}
+        .status-message {{
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }}
+        .header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }}
+        .logo-container {{
+            display: flex;
+            align-items: center;
+        }}
+        .logo {{
+            height: 40px;
+            margin-right: 15px;
+        }}
+        .title-container {{
+            flex: 1;
+            text-align: center;
+        }}
     </style>
 </head>
 <body>
+    <div class="header">
+        <div class="logo-container">
+            <img src="/static/logo-aws.svg" alt="AWS Logo" class="logo">
+        </div>
+        <div class="title-container">
+            <h1>Drone Simulation Explorer</h1>
+        </div>
+        <div class="logo-container">
+            <img src="/static/logo-toc.svg" alt="TOC Logo" class="logo">
+        </div>
+    </div>
     <div class="container">
         <div class="sidebar">
-            <h1>Simulation Explorer</h1>
-            
-            <div class="filter-group">
-                <label for="drone-type">Drone Type:</label>
-                <select id="drone-type">
-                    {drone_type_html}
-                </select>
-                
-                <label for="seed">Seed:</label>
-                <select id="seed">
-                    {seed_html}
-                </select>
-                
-                <label for="strategy">Strategy:</label>
-                <select id="strategy">
-                    {strategy_html}
-                </select>
-                
-                <button id="apply-filters">Apply Filters</button>
-                <button id="reset-filters">Reset Filters</button>
+            <div class="tabs">
+                <div class="tab active" data-tab="history-tab">History</div>
+                <div class="tab" data-tab="new-simulation-tab">New Simulation</div>
             </div>
             
-            <h2>Simulations</h2>
-            <div class="simulation-list" id="simulation-list">
-                <div class="no-simulations">No simulations found</div>
+            <div id="history-tab" class="tab-content active">
+                <div class="filter-group">
+                    <label for="drone-type">Drone Type:</label>
+                    <select id="drone-type">
+                        {drone_type_html}
+                    </select>
+                    
+                    <label for="seed">Seed:</label>
+                    <select id="seed">
+                        {seed_html}
+                    </select>
+                    
+                    <label for="strategy">Strategy:</label>
+                    <select id="strategy">
+                        {strategy_html}
+                    </select>
+                    
+                    <button id="apply-filters">Apply Filters</button>
+                    <button id="reset-filters">Reset Filters</button>
+                </div>
+                
+                <h2>Simulations</h2>
+                <div class="simulation-list" id="simulation-list">
+                    <div class="no-simulations">No simulations found</div>
+                </div>
+                
+                <button id="refresh-button">Refresh Simulations</button>
             </div>
             
-            <button id="refresh-button">Refresh Simulations</button>
+            <div id="new-simulation-tab" class="tab-content">
+                <h2>Create New Simulation</h2>
+                <form id="simulation-form">
+                    <div class="form-group">
+                        <label for="pattern">Drone Pattern:</label>
+                        <select id="pattern" name="pattern">
+                            <option value="lawnmower">Lawnmower</option>
+                            <option value="circular">Circular</option>
+                            <option value="ai">AI</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="strategy-group">
+                        <label for="new-strategy">Strategy:</label>
+                        <select id="new-strategy" name="strategy">
+                            <option value="">Default</option>
+                            <!-- Will be populated via JavaScript -->
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="new-seed">Seed (optional):</label>
+                        <input type="text" id="new-seed" name="seed" placeholder="Random if empty">
+                    </div>
+                    
+                    <div class="form-group" id="num-drones-group">
+                        <label for="num-drones">Number of Drones:</label>
+                        <input type="number" id="num-drones" name="num_drones" min="1" max="10" value="4">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="steps">Simulation Steps:</label>
+                        <input type="number" id="steps" name="steps" min="1" max="500" value="200">
+                    </div>
+                    
+                    <button type="submit" id="run-simulation-button">Run Simulation</button>
+                </form>
+                
+                <div class="progress-container" id="progress-container">
+                    <div class="progress-bar" id="progress-bar">0%</div>
+                </div>
+                <div class="status-message" id="status-message"></div>
+            </div>
         </div>
         
         <div class="content">
@@ -375,6 +612,18 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
         const speedSlider = document.getElementById('speed');
         const speedValue = document.getElementById('speed-value');
         const refreshButton = document.getElementById('refresh-button');
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+        const simulationForm = document.getElementById('simulation-form');
+        const patternSelect = document.getElementById('pattern');
+        const newStrategySelect = document.getElementById('new-strategy');
+        const newSeedInput = document.getElementById('new-seed');
+        const numDronesInput = document.getElementById('num-drones');
+        const stepsInput = document.getElementById('steps');
+        const runSimulationButton = document.getElementById('run-simulation-button');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const statusMessage = document.getElementById('status-message');
         
         // Event listeners
         applyFiltersButton.addEventListener('click', loadSimulations);
@@ -384,9 +633,36 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
         refreshButton.addEventListener('click', () => {{
             window.location.reload();
         }});
+        tabs.forEach(tab => {{
+            tab.addEventListener('click', () => {{
+                // Remove active class from all tabs
+                tabs.forEach(t => {{
+                    t.classList.remove('active');
+                }});
+                // Add active class to clicked tab
+                tab.classList.add('active');
+                // Hide all tab contents
+                tabContents.forEach(content => {{
+                    content.classList.remove('active');
+                }});
+                // Show the corresponding tab content
+                const tabContent = document.getElementById(tab.dataset.tab);
+                tabContent.classList.add('active');
+            }});
+        }});
+        simulationForm.addEventListener('submit', runNewSimulation);
         
         // Load simulations on page load
         loadSimulations();
+        
+        // Load strategies for the new simulation form
+        loadStrategies();
+        
+        // Update form fields based on pattern selection
+        patternSelect.addEventListener('change', updateFormFields);
+        
+        // Initialize form fields based on default pattern
+        updateFormFields();
         
         // Functions
         function loadSimulations() {{
@@ -394,7 +670,7 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
             const seed = seedSelect.value;
             const strategy = strategySelect.value;
             
-            fetch(`/api/simulations?drone_type=${{droneType}}&seed=${{seed}}&strategy=${{strategy}}`)
+            fetch('/api/simulations?drone_type=' + droneType + '&seed=' + seed + '&strategy=' + strategy)
                 .then(response => response.json())
                 .then(data => {{
                     simulations = data;
@@ -404,6 +680,11 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
                     console.error('Error loading simulations:', error);
                     simulationList.innerHTML = '<div class="no-simulations">Error loading simulations</div>';
                 }});
+            
+            // Return a promise for chaining
+            return new Promise((resolve, reject) => {{
+                setTimeout(() => resolve(), 500);
+            }});
         }}
         
         function updateSimulationList() {{
@@ -444,25 +725,25 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
             
             // Update info panel
             let info = '<strong>Simulation Details:</strong><br>';
-            info += `<strong>Drone Type:</strong> ${{simulation.drone_type || 'N/A'}}<br>`;
-            info += `<strong>Seed:</strong> ${{simulation.seed || 'N/A'}}<br>`;
+            info += '<strong>Drone Type:</strong> ' + (simulation.drone_type || 'N/A') + '<br>';
+            info += '<strong>Seed:</strong> ' + (simulation.seed || 'N/A') + '<br>';
             
             if (simulation.strategy) {{
-                info += `<strong>Strategy:</strong> ${{simulation.strategy}}<br>`;
+                info += '<strong>Strategy:</strong> ' + simulation.strategy + '<br>';
             }}
             
             if (simulation.h_value && simulation.v_value) {{
-                info += `<strong>H:</strong> ${{simulation.h_value}}, <strong>V:</strong> ${{simulation.v_value}}<br>`;
+                info += '<strong>H:</strong> ' + simulation.h_value + ', <strong>V:</strong> ' + simulation.v_value + '<br>';
             }}
             
             if (simulation.timestamp) {{
-                info += `<strong>Date:</strong> ${{simulation.timestamp}}<br>`;
+                info += '<strong>Date:</strong> ' + simulation.timestamp + '<br>';
             }}
             
             infoPanel.innerHTML = info;
             
             // Load the GIF
-            simulationGif.src = `/simulation/${{simulation.filename}}`;
+            simulationGif.src = '/simulation/' + simulation.filename;
             simulationGif.style.display = 'block';
         }}
         
@@ -507,11 +788,169 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
         
         function updateSpeed() {{
             const speed = speedSlider.value;
-            speedValue.textContent = `${{speed}}x`;
+            speedValue.textContent = speed + 'x';
             
             // Adjust animation speed
             // Note: Controlling GIF animation speed is challenging in browsers
             // This is a limitation of the web-based approach
+        }}
+        
+        function runNewSimulation(event) {{
+            event.preventDefault();
+            
+            // Disable form elements during simulation
+            const formElements = simulationForm.elements;
+            for (let i = 0; i < formElements.length; i++) {{
+                formElements[i].disabled = true;
+            }}
+            
+            // Show progress container and reset
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+            statusMessage.textContent = 'Starting simulation...';
+            
+            // Create form data
+            const formData = new FormData(simulationForm);
+            
+            // Send request to run simulation
+            fetch('/api/run_simulation', {{
+                method: 'POST',
+                body: formData
+            }})
+            .then(response => response.json())
+            .then(data => {{
+                if (data.success) {{
+                    // Show success message
+                    statusMessage.textContent = 'Simulation completed successfully!';
+                    
+                    // Set progress to 100%
+                    progressBar.style.width = '100%';
+                    progressBar.textContent = '100%';
+                    
+                    // Switch to history tab and select the new simulation
+                    tabs[0].click(); // Click on History tab
+                    
+                    // Refresh the simulation list
+                    loadSimulations().then(() => {{
+                        // Find and select the new simulation
+                        if (data.gif_path) {{
+                            const simulationItems = document.querySelectorAll('.simulation-item');
+                            for (const item of simulationItems) {{
+                                if (item.dataset.filename === data.gif_path) {{
+                                    item.click();
+                                    item.scrollIntoView({{ behavior: 'smooth' }});
+                                    break;
+                                }}
+                            }}
+                        }}
+                    }});
+                    
+                    // Re-enable form elements
+                    for (let i = 0; i < formElements.length; i++) {{
+                        formElements[i].disabled = false;
+                    }}
+                }} else {{
+                    // Show error message
+                    progressBar.style.width = '100%';
+                    progressBar.textContent = 'Error';
+                    progressBar.style.backgroundColor = '#f44336';
+                    statusMessage.textContent = data.error || 'Error creating simulation!';
+                    
+                    // Re-enable form elements
+                    for (let i = 0; i < formElements.length; i++) {{
+                        formElements[i].disabled = false;
+                    }}
+                }}
+            }})
+            .catch(error => {{
+                console.error('Error running simulation:', error);
+                progressBar.style.width = '100%';
+                progressBar.textContent = 'Error';
+                progressBar.style.backgroundColor = '#f44336';
+                statusMessage.textContent = 'Error creating simulation!';
+                
+                // Re-enable form elements
+                for (let i = 0; i < formElements.length; i++) {{
+                    formElements[i].disabled = false;
+                }}
+            }});
+            
+            // Start polling for progress updates
+            pollProgress();
+        }}
+        
+        function pollProgress() {{
+            // Create a polling interval to check progress
+            const progressInterval = setInterval(() => {{
+                fetch('/api/progress')
+                    .then(response => response.json())
+                    .then(data => {{
+                        // Calculate progress percentage
+                        if (data.total_steps > 0) {{
+                            const progressPercent = Math.round((data.current_step / data.total_steps) * 100);
+                            
+                            // Update progress bar
+                            progressBar.style.width = progressPercent + '%';
+                            progressBar.textContent = progressPercent + '%';
+                            
+                            // Update status message
+                            statusMessage.textContent = 'Running simulation... Step ' + 
+                                data.current_step + ' of ' + data.total_steps;
+                            
+                            // If simulation is complete, clear the interval
+                            if (data.current_step >= data.total_steps) {{
+                                clearInterval(progressInterval);
+                            }}
+                        }}
+                    }})
+                    .catch(error => {{
+                        console.error('Error fetching progress:', error);
+                    }});
+            }}, 500); // Poll every 500ms
+            
+            // Store the interval ID in a global variable so we can clear it if needed
+            window.progressIntervalId = progressInterval;
+        }}
+        
+        function loadStrategies() {{
+            fetch('/api/strategies')
+                .then(response => response.json())
+                .then(strategies => {{
+                    // Clear existing options except the first one
+                    while (newStrategySelect.options.length > 1) {{
+                        newStrategySelect.remove(1);
+                    }}
+                    
+                    // Add new options
+                    strategies.forEach(strategy => {{
+                        const option = document.createElement('option');
+                        option.value = strategy;
+                        option.textContent = strategy;
+                        newStrategySelect.appendChild(option);
+                    }});
+                }})
+                .catch(error => {{
+                    console.error('Error loading strategies:', error);
+                }});
+        }}
+        
+        function updateFormFields() {{
+            const pattern = patternSelect.value;
+            
+            // Show/hide strategy field based on pattern
+            if (pattern === 'lawnmower') {{
+                document.getElementById('strategy-group').style.display = 'block';
+            }} else {{
+                document.getElementById('strategy-group').style.display = 'none';
+            }}
+            
+            // Show/hide num drones field based on pattern
+            if (pattern === 'ai') {{
+                document.getElementById('num-drones-group').style.display = 'block';
+            }} else {{
+                document.getElementById('num-drones-group').style.display = 'none';
+            }}
         }}
     </script>
 </body>
