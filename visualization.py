@@ -135,17 +135,17 @@ class SimulationVisualizer:
         for i in range(len(y_grid)-1):
             for j in range(len(x_grid)-1):
                 # Calculate the center of this visualization grid cell
-                center_lat = (y_grid[i] + y_grid[i+1]) / 2
-                center_long = (x_grid[j] + x_grid[j+1]) / 2
+                center_x = (x_grid[j] + x_grid[j+1]) / 2
+                center_y = (y_grid[i] + y_grid[i+1]) / 2
                 
                 # Sample the density at this point using the ocean map's calculation
                 if hasattr(self.ocean_map, '_calculate_density_at_point'):
                     # Use the direct calculation method if available
-                    Z[i, j] = self.ocean_map._calculate_density_at_point(center_lat, center_long)
+                    Z[i, j] = self.ocean_map._calculate_density_at_point(center_x, center_y)
                 else:
-                    # Fall back to grid lookup
-                    grid_x = int(center_lat / self.ocean_map.grid_size)
-                    grid_y = int(center_long / self.ocean_map.grid_size)
+                    # Fall back to grid-based lookup
+                    grid_x = int(center_x / self.ocean_map.grid_size)
+                    grid_y = int(center_y / self.ocean_map.grid_size)
                     key = (grid_x, grid_y)
                     if key in self.ocean_map.particle_map:
                         Z[i, j] = self.ocean_map.particle_map[key]
@@ -227,7 +227,7 @@ class SimulationVisualizer:
             color = colors[i % len(colors)]
             
             # Get trajectory from simulation engine if available, otherwise use current position
-            trajectories = self.simulation_engine.drone_trajectories if self.simulation_engine else {i: [(drone.long, drone.lat)]}
+            trajectories = self.simulation_engine.drone_trajectories if self.simulation_engine else {i: [(drone.x_km, drone.y_km)]}
             
             # Plot drone trajectory
             if i in trajectories and len(trajectories[i]) > 1:
@@ -236,7 +236,7 @@ class SimulationVisualizer:
                         label=f"Drone {i+1} Trajectory" if len(trajectories[i]) == 2 else "")
             
             # Plot drone position
-            ax.scatter(drone.long, drone.lat, color=color, s=100, marker='o', 
+            ax.scatter(drone.x_km, drone.y_km, color=color, s=100, marker='o', 
                        edgecolors='black', linewidths=1, label=f"Drone {i+1}")
             
             # Plot scan area
@@ -353,12 +353,12 @@ class SimulationVisualizer:
             ax (matplotlib.axes.Axes): Axes to plot on
         """
         # Plot catching system position
-        ax.scatter(self.catching_system.long, self.catching_system.lat, 
+        ax.scatter(self.catching_system.x_km, self.catching_system.y_km, 
                   color='black', s=200, marker='s', 
                   edgecolors='yellow', linewidths=2, label="Catching System")
         
         # Plot catching system range - 900 meters (0.9 km)
-        range_circle = patches.Circle((self.catching_system.long, self.catching_system.lat), 
+        range_circle = patches.Circle((self.catching_system.x_km, self.catching_system.y_km), 
                                      radius=0.9, fill=False, 
                                      color='yellow', linestyle='-.')
         ax.add_patch(range_circle)
@@ -372,8 +372,8 @@ class SimulationVisualizer:
                 prev_pos = trajectory[-2]
                 
                 # Calculate direction vector
-                dx = last_pos[0] - prev_pos[0]  # Change in longitude
-                dy = last_pos[1] - prev_pos[1]  # Change in latitude
+                dx = last_pos[0] - prev_pos[0]  # Change in x_km
+                dy = last_pos[1] - prev_pos[1]  # Change in y_km
                 
                 # Only draw if there's actual movement
                 if dx != 0 or dy != 0:
@@ -385,7 +385,7 @@ class SimulationVisualizer:
                         dy = arrow_length * dy / magnitude
                         
                         # Draw an arrow indicating the movement direction
-                        ax.arrow(self.catching_system.long, self.catching_system.lat, 
+                        ax.arrow(self.catching_system.x_km, self.catching_system.y_km, 
                                 dx, dy, head_width=3, head_length=3, 
                                 fc='yellow', ec='black', linewidth=2)
         
@@ -398,20 +398,20 @@ class SimulationVisualizer:
             dy = arrow_length * np.sin(heading_rad)
             
             # Draw an arrow indicating the heading
-            ax.arrow(self.catching_system.long, self.catching_system.lat, 
+            ax.arrow(self.catching_system.x_km, self.catching_system.y_km, 
                     dx, dy, head_width=3, head_length=3, 
                     fc='yellow', ec='black', linewidth=2)
         
         # Plot target position if available
         if hasattr(self.catching_system, 'target_position') and self.catching_system.target_position is not None:
-            target_lat, target_long = self.catching_system.target_position
-            ax.scatter(target_long, target_lat, 
+            target_y_km, target_x_km = self.catching_system.target_position
+            ax.scatter(target_x_km, target_y_km, 
                       color='yellow', s=100, marker='*', 
                       edgecolors='black', linewidths=1, label="Target Position")
             
             # Draw a line from current position to target
-            ax.plot([self.catching_system.long, target_long], 
-                   [self.catching_system.lat, target_lat], 
+            ax.plot([self.catching_system.x_km, target_x_km], 
+                   [self.catching_system.y_km, target_y_km], 
                    'y--', alpha=0.5)
         
         # Plot catching system trajectory if available from simulation engine

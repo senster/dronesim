@@ -39,9 +39,9 @@ def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None):
     ocean = OceanMap(width=100.0, height=100.0, particle_density=0.5, seed=seed)
     
     # Create the catching system in the center of the map
-    system_lat = 50.0
-    system_long = 50.0
-    system = CatchingSystem(lat=system_lat, long=system_long, capacity=50.0)
+    system_x = 50.0
+    system_y = 50.0
+    system = CatchingSystem(x_km=system_x, y_km=system_y)
     
     # Create a fleet of drones all starting at the catching system's location
     # but heading in different directions to avoid path overlap
@@ -49,16 +49,16 @@ def run_lawnmower_simulation(output_dir, strategy_name=None, seed=None):
         # Drone 1: Start at system, move east and north
         # Field of view is 300m x 300m (0.3km x 0.3km)
         # Using a small step size (2.0 km) for a denser pattern with more lines
-        LawnmowerDrone(lat=system_lat, long=system_long, scan_radius=0.3, 
-                       min_lat=0.0, max_lat=100.0, min_long=0.0, max_long=100.0,
+        LawnmowerDrone(x_km=system_x, y_km=system_y, scan_radius=0.3, 
+                       min_x=0.0, max_x=100.0, min_y=0.0, max_y=100.0,
                        step_size=2.0, initial_direction=1, initial_vertical_direction=1,
                        strategy_name=strategy_name),
         
         # Drone 2: Start at system, move west and south
         # Field of view is 300m x 300m (0.3km x 0.3km)
         # Using a small step size (2.0 km) for a denser pattern with more lines
-        LawnmowerDrone(lat=system_lat, long=system_long, scan_radius=0.3, 
-                       min_lat=0.0, max_lat=100.0, min_long=0.0, max_long=100.0,
+        LawnmowerDrone(x_km=system_x, y_km=system_y, scan_radius=0.3, 
+                       min_x=0.0, max_x=100.0, min_y=0.0, max_y=100.0,
                        step_size=2.0, initial_direction=-1, initial_vertical_direction=-1,
                        strategy_name=strategy_name)
     ]
@@ -100,41 +100,41 @@ def run_circular_simulation(output_dir, seed=None):
     ocean = OceanMap(width=100.0, height=100.0, particle_density=0.5, seed=seed)
     
     # Create the catching system in the center of the map
-    system_lat = 50.0
-    system_long = 50.0
-    system = CatchingSystem(lat=system_lat, long=system_long, capacity=50.0)
+    system_x = 50.0
+    system_y = 50.0
+    system = CatchingSystem(x_km=system_x, y_km=system_y)
     
     # Create a fleet of circular drones
     # Each drone will fly in circles in front of the system
     # Pass the catching system reference so drones can follow it
     drones = [
         # Drone 1: Closest to the system, small circle
-        CircularDrone(lat=system_lat, long=system_long, scan_radius=0.3,
-                     center_lat=system_lat, center_long=system_long,
+        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
+                     center_x=system_x, center_y=system_y,
                      orbit_radius=2.0, drone_id=0, total_drones=5,
                      catching_system=system),
         
         # Drone 2: Medium distance, left side
-        CircularDrone(lat=system_lat, long=system_long, scan_radius=0.3,
-                     center_lat=system_lat, center_long=system_long,
+        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
+                     center_x=system_x, center_y=system_y,
                      orbit_radius=2.5, drone_id=1, total_drones=5,
                      catching_system=system),
         
         # Drone 3: Medium distance, right side
-        CircularDrone(lat=system_lat, long=system_long, scan_radius=0.3,
-                     center_lat=system_lat, center_long=system_long,
+        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
+                     center_x=system_x, center_y=system_y,
                      orbit_radius=2.5, drone_id=2, total_drones=5,
                      catching_system=system),
         
         # Drone 4: Further out, left side
-        CircularDrone(lat=system_lat, long=system_long, scan_radius=0.3,
-                     center_lat=system_lat, center_long=system_long,
+        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
+                     center_x=system_x, center_y=system_y,
                      orbit_radius=3.0, drone_id=3, total_drones=5,
                      catching_system=system),
         
         # Drone 5: Further out, right side
-        CircularDrone(lat=system_lat, long=system_long, scan_radius=0.3,
-                     center_lat=system_lat, center_long=system_long,
+        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
+                     center_x=system_x, center_y=system_y,
                      orbit_radius=3.0, drone_id=4, total_drones=5,
                      catching_system=system)
     ]
