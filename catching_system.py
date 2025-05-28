@@ -39,6 +39,10 @@ class CatchingSystem(Actor):
         self.target_position = None  # Target position to move toward
 
         self.strategy = strategy  # NEW: movement strategy
+
+        # FIXME 
+        self._update_counter = 0  # Counter for controlling update frequency
+        self._update_interval = 10  # Update every 10 steps
         
     def step(self, drones, ocean_map):
         """
@@ -215,13 +219,20 @@ class CatchingSystem(Actor):
     
     def _update_movement_target_random(self):
         """Select a random direction and move."""
+        # FIXME
+        self._update_counter += 1
+        if self._update_counter % self._update_interval != 0:
+            return  # Skip update
+
         import random
-        angle = random.uniform(0, 360)
+        random.seed(0)
+        angle = random.uniform(0, 360) 
         distance = 10.0  # Arbitrary forward movement
         rad = math.radians(angle - 90)
         target_x = self.x_km + distance * math.cos(rad)
         target_y = self.y_km + distance * math.sin(rad)
         self.target_position = (max(0, min(100, target_x)), max(0, min(100, target_y)))
+        print(f"random {self.target_position}")
     
     def _update_movement_target_greedy(self):
         """
@@ -230,6 +241,11 @@ class CatchingSystem(Actor):
         while considering the system's current heading and turning limitations.
         Prefers targets that are in front of the system rather than behind it.
         """
+        # FIXME
+        self._update_counter += 1
+        if self._update_counter % self._update_interval != 0:
+            return  # Skip update
+        
         if not self.historical_data:
             return  # No historical data to analyze
             
@@ -323,6 +339,7 @@ class CatchingSystem(Actor):
         
         # Set the target position
         self.target_position = (target_x, target_y)
+        print(f"greedy {self.target_position}")
     
     def _update_movement_target_optimal(self, ocean_map):
         """
@@ -333,17 +350,21 @@ class CatchingSystem(Actor):
         3. Larger search radius (50km)
         4. Distance-weighted particle density scoring
         """
+        # FIXME
+        self._update_counter += 1
+        if self._update_counter % self._update_interval != 0:
+            return  # Skip update 
         # Initialize variables
         best_score = 0.0
         best_target = None
-        search_radius = 100.0  # Large search radius to find the best areas
+        search_radius = 50  # Large search radius to find the best areas
         step_km = 1  # High resolution for accurate targeting
         
         # Search in a full 360-degree radius around the system
         for dx in range(-int(search_radius), int(search_radius)+1, step_km):
             for dy in range(-int(search_radius), int(search_radius)+1, step_km):
                 x = self.x_km + dx
-                y = self.y_km + dy
+                y = self.y_km + dy 
 
                 # Check if within map bounds
                 if not (0 <= x <= 100 and 0 <= y <= 100):
@@ -373,6 +394,7 @@ class CatchingSystem(Actor):
         # Set the target position if a good one was found
         if best_target:
             self.target_position = best_target
+        print(f"optimal {self.target_position}")
             
     # The following code is commented out and no longer used:
     #         current_f_score, current = heapq.heappop(open_list)

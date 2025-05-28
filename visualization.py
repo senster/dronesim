@@ -63,8 +63,8 @@ class SimulationVisualizer:
         ax_map.set_title(f"Simulation Step {step_num}")
         ax_map.set_xlim(0, self.ocean_map.width)
         ax_map.set_ylim(0, self.ocean_map.height)
-        ax_map.set_xlabel("Longitude")
-        ax_map.set_ylabel("Latitude")
+        ax_map.set_xlabel("x (km)")
+        ax_map.set_ylabel("y (km)")
         
         # Plot particle density as a heatmap
         self._plot_particle_density(ax_map)
@@ -95,7 +95,7 @@ class SimulationVisualizer:
         # Close the figure to free memory
         plt.close(fig)
         
-    def save_animation(self, filename="simulation.gif", fps=5):
+    def save_animation(self, filename="simulation.gif", fps=200):
         """
         Save all captured frames as an animated GIF.
         
@@ -118,7 +118,7 @@ class SimulationVisualizer:
             save_all=True,
             append_images=self.frames[1:],
             optimize=False,
-            duration=1000//fps,  # milliseconds per frame
+            duration= 1, # 1000//fps,  # milliseconds per frame
             loop=0  # 0 means loop forever
         )
         

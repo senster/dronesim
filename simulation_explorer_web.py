@@ -505,9 +505,20 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
                         {drone_type_html}
                     </select>
                     
-                    <label for="seed">Seed:</label>
+                    <label for="seed">Plastic Density Field:</label>
                     <select id="seed">
                         {seed_html}
+                    </select>
+
+                    <label for="seed">Weather Conditions</label>
+                    <select id="seed value="4">
+                     <option value="4">Browse...</option>
+                     </select>
+
+                    <label for="seed">Number of drones:</label>
+                    <select id="seed value="4">
+                     <option value="4">4</option>
+                        
                     </select>
                     
                     <label for="strategy">Camera:</label>
@@ -547,6 +558,13 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
                         </select>
                     </div>
                     
+                    <div class="form-group" id="strategy-group">
+                        <label for="new-strategy">Number of drones:</label>
+                        <select id="new-strategy" name="strategy">
+                            <option value="">Default</option>
+                            <!-- Will be populated via JavaScript -->
+                        </select>
+                    </div>
                     <div class="form-group">
                         <label for="new-seed">Seed (optional):</label>
                         <input type="text" id="new-seed" name="seed" placeholder="Random if empty">
@@ -727,7 +745,7 @@ def get_html_template(drone_type_options, seed_options, strategy_options):
             // Update info panel
             let info = '<strong>Simulation Details:</strong><br>';
             info += '<strong>Drone Type:</strong> ' + (simulation.drone_type || 'N/A') + '<br>';
-            info += '<strong>Seed:</strong> ' + (simulation.seed || 'N/A') + '<br>';
+            info += '<strong>Plastic Density Field:</strong> ' + (simulation.seed || 'N/A') + '<br>';
             
             if (simulation.strategy) {{
                 info += '<strong>Strategy:</strong> ' + simulation.strategy + '<br>';

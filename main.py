@@ -140,18 +140,18 @@ def run_circular_simulation(output_dir, zarr_path=None, num_steps=200):
                      center_x=system_x, center_y=system_y,
                      orbit_radius=5.0, drone_id=1, total_drones=5,
                      catching_system=system1),  # Link to drone-based system
-        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
-                     center_x=system_x, center_y=system_y,
-                     orbit_radius=5.0, drone_id=2, total_drones=5,
-                     catching_system=system1),  # Link to drone-based system
-        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
-                     center_x=system_x, center_y=system_y,
-                     orbit_radius=5.0, drone_id=3, total_drones=5,
-                     catching_system=system1),  # Link to drone-based system
-        CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
-                     center_x=system_x, center_y=system_y,
-                     orbit_radius=3.0, drone_id=4, total_drones=5,
-                     catching_system=system1)  # Link to drone-based system
+        # CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
+        #              center_x=system_x, center_y=system_y,
+        #              orbit_radius=5.0, drone_id=2, total_drones=5,
+        #              catching_system=system1),  # Link to drone-based system
+        # CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
+        #              center_x=system_x, center_y=system_y,
+        #              orbit_radius=5.0, drone_id=3, total_drones=5,
+        #              catching_system=system1),  # Link to drone-based system
+        # CircularDrone(x_km=system_x, y_km=system_y, scan_radius=0.3,
+        #              center_x=system_x, center_y=system_y,
+        #              orbit_radius=3.0, drone_id=4, total_drones=5,
+        #              catching_system=system1)  # Link to drone-based system
     ]
     
     # Create pattern parameters for the filename
@@ -170,13 +170,24 @@ def run_ai_simulation(output_dir, zarr_path=None, num_drones=4, num_steps=200):
     Returns:
         tuple: (final_stats, gif_path)
     """
-    # Create the ocean map with optional seed
-    ocean = OceanMap(width=100.0, height=100.0, particle_density=0.5, seed=seed)
+    # Create the ocean map with particles from zarr file
+    ocean = OceanMap(zarr_path=zarr_path)
     
-    # Create the catching system in the center of the map
-    system_x = 50.0
-    system_y = 50.0
-    system = CatchingSystem(x_km=system_x, y_km=system_y)
+    # Create three catching systems with different strategies, all starting at the same position
+    system_x = ocean.width / 2  # Center of the map
+    system_y = ocean.height / 2  # Center of the map
+    
+    # First system with "drone" strategy
+    system1 = CatchingSystem(x_km=system_x, y_km=system_y, strategy="drone")
+    
+    # Second system with "random" strategy
+    system2 = CatchingSystem(x_km=system_x, y_km=system_y, strategy="random")
+    
+    # Third system with "optimal" strategy
+    system3 = CatchingSystem(x_km=system_x, y_km=system_y, strategy="optimal")
+    
+    # Create a list of catching systems
+    systems = [system1, system2, system3]
     
     # Create a fleet of AI drones with dynamic path planning
     drones = []
@@ -225,11 +236,10 @@ def run_ai_simulation(output_dir, zarr_path=None, num_drones=4, num_steps=200):
     # Add seed and drone count to pattern parameters
     pattern_name = "ai"
     pattern_params = {
-        "seed": ocean.seed,
         "num_drones": num_drones
     }
             
-    return run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params, num_steps)
+    return run_simulation(ocean, drones, systems, output_dir, pattern_name, pattern_params, num_steps)
 
 def run_simulation(ocean, drones, system, output_dir, pattern_name, pattern_params={}, num_steps=200):
     """
@@ -324,7 +334,7 @@ def main():
     
     # Set up argument parser
     parser = argparse.ArgumentParser(description="Drone Simulation")
-    parser.add_argument("pattern", nargs="?", choices=["circular", "lawnmower", "ai"], default="lawnmower",
+    parser.add_argument("--pattern", "-p", nargs="?", choices=["circular", "lawnmower", "ai"], default="lawnmower",
                         help="Drone flight pattern (default: lawnmower)")
     parser.add_argument("--strategy", "-s", help="Scanning strategy for lawnmower pattern")
     parser.add_argument("--list-strategies", "-l", action="store_true", help="List available scanning strategies")

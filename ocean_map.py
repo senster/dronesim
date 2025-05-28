@@ -22,7 +22,7 @@ class OceanMap(Actor):
         self.width = width
         self.height = height
         self.particle_map = {}  # Will store density values for different regions
-        self.grid_size = 1  # Higher resolution grid (1x1 units)
+        self.grid_size = 4  # Higher resolution grid (1x1 units)
         
         # Track processed particles (where particles have been removed)
         self.processed_particles = {}  # Will store grid cells where particles have been processed
