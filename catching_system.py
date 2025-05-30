@@ -7,17 +7,18 @@ class CatchingSystem(Actor):
     Represents a mobile system for catching plastic in the ocean detected by drones.
     Can move slowly and uses a greedy algorithm to navigate toward high-density areas.
     """
-    def __init__(self, x_km=0.0, y_km=0.0, move_speed=0.278, max_turn_angle=1.5, 
-                 system_span=1.4, retention_efficiency=0.8, strategy="drone"):
+    def __init__(self, dt=300.0, x_km=0.0, y_km=0.0, move_speed=2.78, max_turn_angle=15, 
+                 system_span=1.4, retention_efficiency=0.5, strategy="drone"):
         """
         Initialize a CatchingSystem with position and movement capabilities.
         The system has unlimited capacity for plastic collection.
         
         Args:
+            dt (float): total number seconds per step 
             x_km (float): X position in kilometers from the left edge
             y_km (float): Y position in kilometers from the bottom edge
             move_speed (float): Maximum movement speed over ground per step (km/h)
-            max_turn_angle (float): Maximum turning angle per step in degrees (1.5 degrees per step = 45 degrees per 3 hours)
+            max_turn_angle (float): Maximum turning angle per step in degrees (°/h) - 45 degrees per 3 hours
             system_span (float): Width of the system in kilometers for plastic collection (default: 1.4 km)
             retention_efficiency (float): Efficiency of the system in retaining plastic (0.0 to 1.0)
         """
@@ -26,8 +27,9 @@ class CatchingSystem(Actor):
         self.total_collected = 0.0  # Total plastic collected over time
         
         # Movement parameters
-        self.move_speed = move_speed  # Speed over ground (km/h)
-        self.max_turn_angle = max_turn_angle
+        dt_step = dt/3600 
+        self.move_speed = move_speed*dt_step  # Speed over ground (km/h)
+        self.max_turn_angle = max_turn_angle*dt_step
         self.heading = 0.0  # Degrees, 0 = North, 90 = East, etc.
         
         # Plastic collection parameters
@@ -42,7 +44,7 @@ class CatchingSystem(Actor):
 
         # FIXME 
         self._update_counter = 0  # Counter for controlling update frequency
-        self._update_interval = 10  # Update every 10 steps
+        self._update_interval = 12  # Update every 12 steps (1 hour)
         
     def step(self, drones, ocean_map):
         """
@@ -178,7 +180,7 @@ class CatchingSystem(Actor):
                     closest_density = density
             
             # Only use historical data if it's reasonably close
-            if closest_distance < 5.0:  # Within 5 km
+            if closest_distance < self._update_interval * self.move_speed:  # Within 1h reach distance
                 return closest_density
         
         # Default to a low density if no data is available
@@ -227,7 +229,7 @@ class CatchingSystem(Actor):
         import random
         random.seed(0)
         angle = random.uniform(0, 360) 
-        distance = 10.0  # Arbitrary forward movement
+        distance = self._update_counter * self.move_speed
         rad = math.radians(angle - 90)
         target_x = self.x_km + distance * math.cos(rad)
         target_y = self.y_km + distance * math.sin(rad)
@@ -277,10 +279,11 @@ class CatchingSystem(Actor):
         direction_x = math.cos(current_heading_rad)
         direction_y = math.sin(current_heading_rad)
         
-        # Maximum feasible turn in 50 steps (about 5 hours)
+        # FIXME
+        # Maximum feasible turn 
         # This is approximately how far ahead we should plan
-        max_turn_angle_50_steps = 50 * self.max_turn_angle
-        max_turn_rad = math.radians(max_turn_angle_50_steps)
+        max_turn_angle_hour = self.max_turn_angle # (1h plan)
+        max_turn_rad = math.radians(max_turn_angle_hour)
         
         for (grid_x, grid_y), density in grid.items():
             # Convert grid cell to x/y coordinates (center of the cell)
@@ -323,7 +326,8 @@ class CatchingSystem(Actor):
             
             # Calculate distance score (prefer closer cells, but not too close)
             # Optimal distance is around 10-15 km (adjusted for 2km grid size)
-            distance_score = 1.0 / (1.0 + abs(distance - 12.5) / 12.5)
+            # distance_score = 1.0 / (1.0 + abs(distance - 12.5) / 12.5)
+            distance_score = 1.0 / (1.0 + abs(distance - self._update_interval * self.move_speed) / (self._update_interval * self.move_speed))
             
             # Calculate final score (plastic density is most important, but direction matters)
             final_score = density * (0.7 * direction_score + 0.3 * distance_score)
@@ -346,7 +350,7 @@ class CatchingSystem(Actor):
         Optimal strategy that uses ground truth map data to find the best target.
         Features:
         1. Full 360-degree search around the system
-        2. Higher resolution scanning (1km grid)
+        2. Higher resolution scanning (2km grid)
         3. Larger search radius (50km)
         4. Distance-weighted particle density scoring
         """
@@ -358,7 +362,7 @@ class CatchingSystem(Actor):
         best_score = 0.0
         best_target = None
         search_radius = 50  # Large search radius to find the best areas
-        step_km = 1  # High resolution for accurate targeting
+        step_km = 2  # High resolution for accurate targeting
         
         # Search in a full 360-degree radius around the system
         for dx in range(-int(search_radius), int(search_radius)+1, step_km):
@@ -377,7 +381,7 @@ class CatchingSystem(Actor):
                 
                 # Get particle density at this location using ground truth data
                 density = ocean_map.get_particles_in_area([
-                    (x-0.5, y-0.5), (x+0.5, y-0.5), (x+0.5, y+0.5), (x-0.5, y+0.5)
+                    (x-1, y-1), (x+1, y-1), (x+1, y+1), (x-1, y+1)
                 ])
                 
                 # Calculate score: density weighted by distance
@@ -412,6 +416,60 @@ class CatchingSystem(Actor):
     #             if neighbor in closed_list:
     #                 continue
                 
+    def _update_movement_target_optimal(self, ocean_map):
+        """
+        Optimal strategy that finds the path with the highest integrated density.
+        Features:
+        1. Full 360-degree radial path search
+        2. Density integration along each path
+        3. Distance-limited integration (50km max range)
+        """
+        import numpy as np
+
+        self._update_counter += 1
+        if self._update_counter % (self._update_interval*24) != 0:
+            return  # Skip update 
+
+        best_score = 0.0
+        best_target = None
+        max_radius = 50  # km
+        path_resolution = 2  # km between points along the path
+        angle_step_deg = 45  # search in 45-degree increments
+
+        for angle_deg in range(0, 360, angle_step_deg):
+            angle_rad = math.radians(angle_deg)
+            total_score = 0.0
+            num_steps = int(max_radius / path_resolution)
+
+            for step in range(1, num_steps + 1):
+                distance = step * path_resolution
+                dx = distance * math.cos(angle_rad)
+                dy = distance * math.sin(angle_rad)
+                x = self.x_km + dx
+                y = self.y_km + dy
+
+                # Check map bounds
+                if not (0 <= x <= 100 and 0 <= y <= 100):
+                    break
+
+                # Get particle density at this location
+                density = ocean_map.get_particles_in_area([
+                    (x-1, y-1), (x+1, y-1), (x+1, y+1), (x-1, y+1)
+                ])
+                
+                # Optionally apply distance decay or weighting
+                weight = 1.0 / (1.0 + distance / 15.0)**2
+                total_score += density * weight
+
+            # Use endpoint of the path as the target
+            if total_score > best_score:
+                best_score = total_score
+                best_target = (self.x_km + max_radius * math.cos(angle_rad),
+                            self.y_km + max_radius * math.sin(angle_rad))
+
+        if best_target:
+            self.target_position = best_target
+        print(f"optimal {self.target_position}")
 
     def _find_best_target(self, ocean_map):
         """
@@ -422,9 +480,9 @@ class CatchingSystem(Actor):
         max_density = 0
         
         # Search over a grid of possible locations (assumed grid size)
-        for x in range(0, 100, 10):  # Assuming a 100 km x 100 km area with 10 km grid spacing
-            for y in range(0, 100, 10):
-                plastic_density = ocean_map.get_particles_in_area([(x, y), (x + 10, y), (x + 10, y + 10), (x, y + 10)])
+        for x in range(0, 100, 2):  # Assuming a 100 km x 100 km area with 1 km grid spacing
+            for y in range(0, 100, 2):
+                plastic_density = ocean_map.get_particles_in_area([(x, y), (x + 2, y), (x + 2, y + 2), (x, y + 2)])
                 
                 if plastic_density > max_density:
                     max_density = plastic_density
@@ -512,7 +570,7 @@ class CatchingSystem(Actor):
         move_angle_rad = math.radians(self.heading - 90)
         
         # Set target 10 units away in current direction
-        target_distance = 10.0
+        target_distance = self._update_interval * self.move_speed
         target_x = self.x_km + target_distance * math.cos(move_angle_rad)
         target_y = self.y_km + target_distance * math.sin(move_angle_rad)
         

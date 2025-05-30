@@ -60,7 +60,8 @@ class SimulationVisualizer:
         ax_map = fig.add_subplot(gs[0])
         
         # Set title and limits for map view
-        ax_map.set_title(f"Simulation Step {step_num}")
+        # ax_map.set_title(f"Simulation Step {step_num}")
+        ax_map.set_title(f"Time {np.round(step_num/12,1)} hours")
         ax_map.set_xlim(0, self.ocean_map.width)
         ax_map.set_ylim(0, self.ocean_map.height)
         ax_map.set_xlabel("x (km)")

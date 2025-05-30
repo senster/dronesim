@@ -10,7 +10,7 @@ class AIDrone(Actor):
     Avoids revisiting areas where particles have already been discovered and processed.
     Coordinates with other drones to avoid overlapping search areas and focuses on discovered clusters.
     """
-    def __init__(self, x_km, y_km, scan_radius, min_x, max_x, min_y, max_y, step_size=1.0, drone_id=None):
+    def __init__(self, x_km, y_km, scan_radius, min_x, max_x, min_y, max_y, dt=300.0, speed=100, drone_id=None):
         """
         Initialize an AI drone with dynamic path planning.
         
@@ -22,7 +22,8 @@ class AIDrone(Actor):
             max_x (float): Maximum X boundary in kilometers
             min_y (float): Minimum Y boundary in kilometers
             max_y (float): Maximum Y boundary in kilometers
-            step_size (float): Distance the drone moves in each step in kilometers
+            dt (float): total number seconds per step 
+            speed (float): Distance the drone moves in km/h
             drone_id (int, optional): Unique identifier for the drone
         """
         super().__init__(x_km, y_km)
@@ -31,7 +32,8 @@ class AIDrone(Actor):
         self.max_x = max_x
         self.min_y = min_y
         self.max_y = max_y
-        self.step_size = step_size
+        dt_step = dt/3600 
+        self.step_size = speed*dt_step
         self.drone_id = drone_id if drone_id is not None else id(self)
         
         # Target position for the next move

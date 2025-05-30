@@ -6,7 +6,7 @@ class LawnmowerDrone(Drone):
     A drone that follows a lawnmower pattern to scan the ocean map.
     """
     def __init__(self, x_km=0.0, y_km=0.0, scan_radius=1.0, 
-                 min_x=0.0, max_x=100.0, min_y=0.0, max_y=100.0, step_size=2.0,
+                 min_x=0.0, max_x=100.0, min_y=0.0, max_y=100.0, dt=300.0, speed=100, 
                  initial_direction=1, initial_vertical_direction=1, strategy_name=None):
         """
         Initialize a LawnmowerDrone with position and scanning capabilities.
@@ -19,7 +19,8 @@ class LawnmowerDrone(Drone):
             max_x (float): Maximum X boundary in kilometers
             min_y (float): Minimum Y boundary in kilometers
             max_y (float): Maximum Y boundary in kilometers
-            step_size (float): Distance to move in each step in kilometers
+            dt (float): total number seconds per step 
+            speed (float): Distance the drone moves in km/h
             initial_direction (int): Initial horizontal direction (1 for east, -1 for west)
             initial_vertical_direction (int): Initial vertical direction (1 for north, -1 for south)
             strategy_name (str, optional): Name of the scanning strategy to use
@@ -31,14 +32,15 @@ class LawnmowerDrone(Drone):
         self.max_x = max_x
         self.min_y = min_y
         self.max_y = max_y
-        self.step_size = step_size
+        dt_step = dt/3600 
+        self.step_size = speed*dt_step
         self.direction = initial_direction  # 1 for moving east, -1 for moving west
         self.vertical_direction = initial_vertical_direction  # 1 for moving north, -1 for moving south
         self.completed_rows = 0
         
         # Strategy parameters
-        self.horizontal_step = step_size  # Horizontal step size (between columns)
-        self.vertical_step = step_size    # Vertical step size (between rows)
+        self.horizontal_step = self.step_size  # Horizontal step size (between columns)
+        self.vertical_step = self.step_size   # Vertical step size (between rows)
         
         # Initialize strategy manager and apply strategy if provided
         self.strategy_manager = StrategyManager()

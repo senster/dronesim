@@ -22,7 +22,7 @@ class OceanMap(Actor):
         self.width = width
         self.height = height
         self.particle_map = {}  # Will store density values for different regions
-        self.grid_size = 4  # Higher resolution grid (1x1 units)
+        self.grid_size = 2  # Higher resolution grid (1x1 units)
         
         # Track processed particles (where particles have been removed)
         self.processed_particles = {}  # Will store grid cells where particles have been processed
@@ -273,7 +273,7 @@ class OceanMap(Actor):
             print(f"Successfully loaded particles from {self.zarr_path}")
             print(f"Lat range: {min_lat} to {max_lat}, Lon range: {min_lon} to {max_lon}")
             print(f"Time steps: {len(self.time_steps[0])}")
-            
+           
         except Exception as e:
             print(f"Error loading zarr file: {e}")
             raise e  # Re-raise the exception since we don't have a fallback

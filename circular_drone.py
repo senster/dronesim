@@ -6,7 +6,7 @@ class CircularDrone(Drone):
     A drone that flies in circular patterns around a central point (the catching system).
     Multiple drones divide the circles between them to avoid path overlap.
     """
-    def __init__(self, x_km=0.0, y_km=0.0, scan_radius=1.0, 
+    def __init__(self, move_speed, x_km=0.0, y_km=0.0, scan_radius=1.0, 
                  center_x=50.0, center_y=50.0, orbit_radius=5.0,
                  drone_id=0, total_drones=1, catching_system=None):
         """
@@ -14,6 +14,7 @@ class CircularDrone(Drone):
         Drones fly in circles in front of the system rather than orbiting around it.
         
         Args:
+            move_speed (float): Catching system moving speed per step
             x_km (float): Initial X position in kilometers from the left edge
             y_km (float): Initial Y position in kilometers from the bottom edge
             scan_radius (float): Radius of the drone's scanning area in kilometers
